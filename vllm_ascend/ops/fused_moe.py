@@ -186,7 +186,7 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
     hidden_states = hidden_states_wrapper.pop()
 
     w1 = w1.transpose(1, 2)
-    gate_up_out_list = torch_npu.npu_grouped_matmul(
+    hidden_states = torch_npu.npu_grouped_matmul(
         x=[hidden_states],
         weight=[w1],
         split_item=2,
@@ -195,13 +195,11 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
         group_list=group_list,
     )
 
-    # TODO: Remove this in the future.
-    gate_up_out = torch.cat(gate_up_out_list, dim=0)
-    gate_up_out = torch_npu.npu_swiglu(gate_up_out)
+    hidden_states = torch_npu.npu_swiglu(hidden_states)
 
     w2 = w2.transpose(1, 2)
     down_out_list = torch_npu.npu_grouped_matmul(
-        x=[gate_up_out],
+        x=[hidden_states],
         weight=[w2],
         split_item=2,
         group_list_type=0,
@@ -209,7 +207,6 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
         group_list=group_list,
     )
 
-    down_out_list = torch.cat(down_out_list, dim=0)
     return hidden_states
 
 
