@@ -15,14 +15,15 @@
 # This file is a part of the vllm-ascend project.
 # Adapted from vllm/tests/kernels/test_moe.py
 
-from typing import Callable, Optional
+from typing import Callable, Optional, overload, List
 
 import torch
 import torch_npu
+import torch.distributed as dist
 from vllm.config import get_current_vllm_config
 from vllm.distributed import (get_tensor_model_parallel_world_size,
                               tensor_model_parallel_all_reduce)
-from vllm.distributed.parallel_state import get_dp_group
+from vllm.distributed.parallel_state import get_dp_group, GroupCoordinator
 from vllm.model_executor.layers.fused_moe.layer import (
     FusedMoE, UnquantizedFusedMoEMethod, determine_expert_map)
 
@@ -152,6 +153,202 @@ def fused_experts_with_mc2(
     hidden_states = torch_npu.npu_moe_distribute_combine(**kwargs)
 
     return hidden_states
+
+
+def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
+              w1: torch.Tensor,
+              w1_scale: torch.Tensor,
+              w2: torch.Tensor,
+              w2_scale: torch.Tensor,
+              group_list: torch.Tensor,
+              dynamic_scale: torch.Tensor = None,
+              group_list_type: int = 1) -> torch.Tensor:
+    """
+    apply MLP: gate_up_proj -> swiglu -> down_proj
+
+    Args:
+        hidden_states_wrapper: wrapper of input hidden states with shape (num_tokens, hidden_size).
+        w1: expert weights1 with shape
+            (num_experts, hidden_size, intermediate_size * 2)
+        w1_scale: weights1 scale with shape (num_experts, intermediate_size * 2)
+        w2: expert weights2 with shape
+            (num_experts, intermediate_size, hidden_size)
+        w2_scale: weights2 scale with shape (num_experts, hidden_size)
+        group_list: number of tokens for each expert, follow cumsum mode, and
+            with shape (num_experts).
+        transpose_weight:
+            w1: (num_experts, intermediate_size * 2, hidden_size) ->
+                    (num_experts, hidden_size, intermediate_size * 2)
+            w2: (num_experts, hidden_size, intermediate_size) ->
+                    (num_experts, intermediate_size, hidden_size)
+
+    Returns:
+        hidden_states: output hidden states after MLP.
+    """
+
+    assert len(hidden_states_wrapper) == 1
+    hidden_states = hidden_states_wrapper.pop()
+    if dynamic_scale is None:
+        hidden_states, pertoken_scale = torch_npu.npu_dynamic_quant(
+            hidden_states)
+    else:
+        pertoken_scale = dynamic_scale
+
+    # gmm1: gate_up_proj
+    hidden_states = torch_npu.npu_grouped_matmul(
+        x=[hidden_states],
+        weight=[w1],
+        scale=[w1_scale],
+        per_token_scale=[pertoken_scale],
+        split_item=2,
+        group_list_type=group_list_type,
+        group_type=0,
+        group_list=group_list,
+        output_dtype=w2_scale.dtype)[0]
+
+    # act_fn: swiglu
+    hidden_states = torch_npu.npu_swiglu(hidden_states)
+    hidden_states, swiglu_out_scale = torch_npu.npu_dynamic_quant(
+        hidden_states)
+
+    # gmm2: down_proj
+    hidden_states = torch_npu.npu_grouped_matmul(
+        x=[hidden_states],
+        weight=[w2],
+        scale=[w2_scale],
+        per_token_scale=[swiglu_out_scale],
+        split_item=2,
+        group_list_type=group_list_type,
+        group_type=0,
+        group_list=group_list,
+        output_dtype=w2_scale.dtype)[0]
+    return hidden_states
+
+
+# currently expert parallelism implemented with all2all
+# is under-optimized.
+def fused_experts_with_all2all(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    top_k: int,
+    expert_map: torch.Tensor = None,
+    ep_group: GroupCoordinator = None,
+):
+    original_shape = hidden_states.shape
+    if len(original_shape) == 3:
+        hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
+
+    num_tokens, _ = hidden_states.shape
+    num_experts = w1.shape[0]
+    device = hidden_states.device
+
+    if expert_map is not None:
+        global_num_experts = len(expert_map)
+        local_num_experts = global_num_experts // ep_group.world_size
+        row_idx_len = num_tokens * top_k
+        row_idx = (torch.arange(0,
+                                row_idx_len,
+                                dtype=torch.int32,
+                                device=device).view(top_k, -1).permute(
+                                    1, 0).contiguous())
+        hidden_states, expanded_row_idx, expanded_expert_idx = torch_npu.npu_moe_init_routing(
+            hidden_states,
+            row_idx=row_idx,
+            expert_idx=topk_ids,
+            active_num=num_tokens)
+
+        global_expert_tokens = torch.bincount(expanded_expert_idx,
+                                              minlength=global_num_experts)
+        scatter_sizes = global_expert_tokens.view(ep_group.world_size,
+                                                  -1).sum(-1)
+
+        gather_sizes = torch.empty_like(scatter_sizes)
+        dist.all_to_all_single(gather_sizes,
+                               scatter_sizes,
+                               group=ep_group.device_group)
+        scatter_size_list = scatter_sizes.cpu().tolist()
+        gather_size_list = gather_sizes.cpu().tolist()
+
+        expanded_expert_idx = expanded_expert_idx % local_num_experts
+        hidden_states = ep_group.all_to_all(hidden_states, 0, 0,
+                                            scatter_size_list,
+                                            gather_size_list)
+        local_expert_idx = ep_group.all_to_all(expanded_expert_idx, 0, 0,
+                                               scatter_size_list,
+                                               gather_size_list)
+
+        sorted_local_expert_idx, sorted_idx = torch.sort(local_expert_idx)
+
+        expert_tokens = torch_npu.npu_moe_compute_expert_tokens(
+            sorted_local_expert_idx, local_num_experts).to(torch.int64)
+
+        hidden_states = hidden_states[sorted_idx]
+        group_list_type = 0
+    else:
+        row_idx_len = num_tokens * top_k
+        row_idx = torch.arange(0,
+                               row_idx_len,
+                               dtype=torch.int32,
+                               device=topk_weights.device).view(
+                                   top_k, -1).permute(1, 0).contiguous()
+        hidden_states, expanded_row_idx, expanded_expert_idx = torch_npu.npu_moe_init_routing(
+            hidden_states,
+            row_idx=row_idx,
+            expert_idx=topk_ids,
+            active_num=num_tokens)
+
+        expert_tokens = torch_npu.npu_moe_compute_expert_tokens(
+            expanded_expert_idx, num_experts)
+        expert_tokens = expert_tokens.to(torch.int64)
+        group_list_type = 0
+
+    hidden_states_wrapper = [hidden_states]
+    del hidden_states
+
+    hidden_states = apply_mlp(hidden_states_wrapper,
+                              w1,
+                              w1_scale,
+                              w2,
+                              w2_scale,
+                              expert_tokens,
+                              group_list_type=group_list_type)
+
+    if expert_map is not None:
+        resorted_idx = torch.argsort(sorted_idx)
+        hidden_states = hidden_states[resorted_idx]
+        hidden_states = ep_group.all_to_all(hidden_states, 0, 0,
+                                            gather_size_list,
+                                            scatter_size_list)
+
+        final_hidden_states = torch_npu.npu_moe_finalize_routing(
+            hidden_states,
+            skip1=None,
+            skip2=None,
+            bias=None,
+            scales=topk_weights,
+            expanded_src_to_dst_row=expanded_row_idx,
+            export_for_source_row=topk_ids,
+        )
+    else:
+        # TODO: Reorder device memory 2 times here, replace the current
+        # implementation here when suitable operators become available.
+        final_hidden_states = torch_npu.npu_moe_finalize_routing(
+            hidden_states,
+            skip1=None,
+            skip2=None,
+            bias=None,
+            scales=topk_weights,
+            expanded_src_to_dst_row=expanded_row_idx,
+            export_for_source_row=topk_ids,
+        )
+    if len(original_shape) == 3:
+        final_hidden_states = final_hidden_states.view(original_shape)
+    return final_hidden_states
 
 
 def fused_experts(
@@ -454,14 +651,13 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             super().__init__(moe=moe)
         vllm_config = get_current_vllm_config()
 
-        ep_group = get_ep_group()
-        self.ep_size = ep_group.world_size
+        self.ep_group = get_ep_group()
+        self.ep_size = self.ep_group.world_size
         self.global_batch_size = vllm_config.scheduler_config.max_num_seqs
         self.local_batch_size = self.global_batch_size // self.ep_size
 
         try:
-            device_group = ep_group.device_group
-            # TODO: Try local_rank = ep_group.rank_in_group
+            device_group = self.ep_group.device_group
             local_rank = torch.distributed.get_rank(group=device_group)
             backend = device_group._get_backend(torch.device("npu"))
             self.moe_all_to_all_group_name = backend.get_hccl_comm_name(
@@ -480,23 +676,25 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                                              requires_grad=False)
 
     def apply(
-        self,
-        layer: torch.nn.Module,
-        x: torch.Tensor,
-        use_grouped_topk: bool,
-        top_k: int,
-        router_logits: torch.Tensor,
-        renormalize: bool,
-        topk_group: Optional[int] = None,
-        num_expert_group: Optional[int] = None,
-        global_num_experts: int = -1,
-        expert_map: Optional[torch.Tensor] = None,
-        custom_routing_function: Optional[Callable] = None,
-        scoring_func: str = "softmax",
-        e_score_correction_bias: Optional[torch.Tensor] = None,
-        is_prefill=False,
-        **kwargs,
-    ):
+            self,
+            layer: torch.nn.Module,
+            x: torch.Tensor,
+            router_logits: torch.Tensor,
+            top_k: int,
+            renormalize: bool,
+            use_grouped_topk: bool = False,
+            global_num_experts: int = -1,
+            expert_map: Optional[torch.Tensor] = None,
+            topk_group: Optional[int] = None,
+            num_expert_group: Optional[int] = None,
+            custom_routing_function: Optional[Callable] = None,
+            scoring_func: str = "softmax",
+            e_score_correction_bias: Optional[torch.Tensor] = None,
+            is_prefill: bool = True,
+            enable_force_load_balance: bool = True,
+            dp_size: int = 1,
+            **kwargs,
+    ) -> torch.Tensor:
         # NOTE: now npu_moe_gating_top_k can only support `group_count=256` pattern
         if global_num_experts == 256:
             topk_weights, topk_ids, _ = torch_npu.npu_moe_gating_top_k(
@@ -526,6 +724,9 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                 e_score_correction_bias=e_score_correction_bias,
             )
 
+        if enable_force_load_balance:
+            topk_ids = torch.randint_like(topk_ids, 0, global_num_experts)
+
         if VLLM_ENABLE_MC2 and not is_prefill:
             return fused_experts_with_mc2(
                 hidden_states=x,
@@ -536,14 +737,27 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                 top_k=top_k,
                 expert_map=expert_map,
                 moe_all_to_all_group_name=self.moe_all_to_all_group_name)
-        else:
+        elif dp_size == 1:
             return fused_experts(hidden_states=x,
                                  w1=layer.w13_weight,
+                                 w1_scale=layer.w13_weight_scale,
                                  w2=layer.w2_weight,
+                                 w2_scale=layer.w2_weight_scale,
                                  topk_weights=topk_weights,
                                  topk_ids=topk_ids,
                                  top_k=top_k,
                                  expert_map=expert_map)
+        else:
+            return fused_experts_with_all2all(hidden_states=x,
+                                              w1=layer.w13_weight,
+                                              w1_scale=layer.w13_weight_scale,
+                                              w2=layer.w2_weight,
+                                              w2_scale=layer.w2_weight_scale,
+                                              topk_weights=topk_weights,
+                                              topk_ids=topk_ids,
+                                              top_k=top_k,
+                                              expert_map=expert_map,
+                                              ep_group=self.ep_group)
 
 
 class AscendFusedMoE(FusedMoE):
