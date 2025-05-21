@@ -190,7 +190,7 @@ class MoEAllToAllTokenDispatcher(MoETokenDispatcher):
         # [tp_size]. Represents the number of tokens received by the current rank from
         # other TP ranks.
         self.output_splits_tp = None
-        self.permute_idx_device = torch.device("npu") if self.moe_permute_fusion else None
+        self.permute_idx_device = torch.device("cuda") if self.moe_permute_fusion else None
         input_chunk_idxs = torch.arange(
             self.num_experts * self.tp_size, device=self.permute_idx_device
         )
@@ -222,7 +222,8 @@ class MoEAllToAllTokenDispatcher(MoETokenDispatcher):
         This method computes the number of tokens assigned to each expert based on the routing_map.
         It also initializes the necessary data structures for AlltoAll communication, such as input
         and output splits, and the mapping between global tokens and local experts. This method
-        should not call any DtoH data copying due to performance consideration.
+        should not call any DtoH data copying due to performance consideration. The necessary DtoH
+        copies are made on the `self.cuda_dtoh_stream` at `self.cuda_dtoh_point`.
 
         Args:
             routing_map (torch.Tensor): The mapping of tokens to experts, with shape
@@ -320,6 +321,10 @@ class MoEAllToAllTokenDispatcher(MoETokenDispatcher):
                 -1, self.num_local_experts
             )
 
+        assert (
+                self.cuda_sync_point_priority[self.cuda_dtoh_point]
+                <= self.cuda_sync_point_priority[self.cuda_sync_point]
+        ), "cuda_sync_point must be after cuda_dtoh_point."
         return num_tokens_per_local_expert
 
     def token_permutation(
@@ -515,17 +520,9 @@ class MoEAllToAllTokenDispatcher(MoETokenDispatcher):
         hidden_states = torch.cat(hidden_states, dim=0)
         return hidden_states
 
-    def get_routing_map(self, router_logits, topk_weights, topk_ids):
-        topk_weights = topk_weights.long()
-        topk_masked_gates = torch.zeros_like(router_logits).scatter(1, topk_ids, topk_weights)
-        topk_map = torch.zeros_like(topk_weights).int().scatter(1, topk_ids, 1).bool()
-        tokens_per_expert = topk_map.sum(dim=0)
-        return topk_masked_gates, topk_map, tokens_per_expert
-
-    def forward(self, hidden_states, w1, w2, router_logits, topk_weights, topk_ids):
-        probs, routing_map, _ = self.get_routing_map(router_logits, topk_weights, topk_ids)
+    def forward(self, hidden_states, w1, w2, topk_weights, topk_ids, top_k, expert_map, ep_group):
         (dispatched_input, tokens_per_expert) = self.token_permutation(
-            hidden_states, probs, routing_map
+            hidden_states, topk_weights, topk_ids
         )
         expert_output, mlp_bias = self.experts(dispatched_input, tokens_per_expert, w1, w2)
         output, mlp_bias = self.token_unpermutation(expert_output, mlp_bias)

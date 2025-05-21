@@ -556,7 +556,10 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                                               w1=layer.w13_weight,
                                               w2=layer.w2_weight,
                                               topk_weights=topk_weights,
-                                              topk_ids=topk_ids)
+                                              topk_ids=topk_ids,
+                                              top_k=top_k,
+                                              expert_map=expert_map,
+                                              ep_group=self.ep_group)
 
 
 class AscendFusedMoE(FusedMoE):
