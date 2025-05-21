@@ -705,9 +705,9 @@ class AscendFusedMoE(FusedMoE):
 
         self.quant_method.create_weights(layer=self, **moe_quant_params)
         moe_dispatcher_config = MoeDispatcherConfig.init_from_params(
-            num_experts=self.global_num_experts,
-            local_expert_indices=self.expert_map,
-            ep_rank=self.ep_rank
+            num_experts=num_experts,
+            num_local_experts=self.local_num_experts,
+            local_expert_indices=self.expert_map
         )
         self.moe_dispatcher = MoEAllToAllTokenDispatcher(moe_dispatcher_config)
 

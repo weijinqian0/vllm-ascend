@@ -59,15 +59,15 @@ def all_to_all(group, input_, output_split_sizes_=None, input_split_sizes=None):
 @dataclass
 class MoeDispatcherConfig:
     num_local_experts: int = 1
+    local_expert_indices: List[int] = None
     num_experts: int = 1
-    ep_rank: int = 1
 
     @classmethod
     def init_from_params(cls, **kwargs):
         return cls(
             num_local_experts=kwargs.get("num_local_experts", 1),
+            local_expert_indices=kwargs.get("local_expert_indices", []),
             num_experts=kwargs.get("num_experts", 1),
-            ep_rank=kwargs.get("ep_rank", 1)
         )
 
 
@@ -150,9 +150,11 @@ class MoEAllToAllTokenDispatcher(MoETokenDispatcher):
         Initialize the AlltoAll token dispatcher.
 
         Args:
-            config (MoeDispatcherConfig): Configuration for the MoE dispatcher.
+            num_local_experts (int): Number of local experts on the current device.
+            local_expert_indices (List[int]): Indices of local experts on the current device.
+            config (TransformerConfig): Configuration for the transformer model.
         """
-        super().__init__(config)
+        super().__init__()
         self.num_local_experts = config.num_local_experts
         vllm_config = get_current_vllm_config()
         assert vllm_config.additional_config is not None
@@ -162,15 +164,9 @@ class MoEAllToAllTokenDispatcher(MoETokenDispatcher):
                 vllm_config.additional_config["expert_tensor_parallel_size"])
         self.tp_size = vllm_config.parallel_config.tensor_parallel_size
         self.ep_size = expert_tensor_parallel_size
-        self.ep_rank = config.ep_rank
         self.num_experts = config.num_experts
         assert self.num_local_experts > 0, "Expected at least one expert"
-        local_expert_indices_offset = (
-                self.ep_rank * self.num_local_experts
-        )
-        self.local_expert_indices = [
-            local_expert_indices_offset + i for i in range(self.num_local_experts)
-        ]
+        self.local_expert_indices = config.local_expert_indices
         assert (
                 len(self.local_expert_indices) == self.num_local_experts
         ), "Invalid local expert indices"
