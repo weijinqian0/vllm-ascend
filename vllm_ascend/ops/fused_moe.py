@@ -241,35 +241,59 @@ def fused_experts_with_all2all(
                                 row_idx_len,
                                 dtype=torch.int32,
                                 device=device).view(top_k, -1).permute(
-                                    1, 0).contiguous())
+            1, 0).contiguous())
         hidden_states, expanded_row_idx, expanded_expert_idx = torch_npu.npu_moe_init_routing(
             hidden_states,
             row_idx=row_idx,
             expert_idx=topk_ids,
             active_num=num_tokens)
 
-        global_expert_tokens = torch.bincount(expanded_expert_idx,
-                                              minlength=global_num_experts)
-        scatter_sizes = global_expert_tokens.view(ep_group.world_size,
-                                                  -1).sum(-1)
-
-        gather_sizes = torch.empty_like(scatter_sizes)
-        dist.all_to_all_single(gather_sizes,
-                               scatter_sizes,
+        local_buffer_rows = 32 * 4096 * top_k // ep_group.world_size * 2
+        max_row_per_ep_rank = local_buffer_rows // ep_group.world_size
+        expert_idx_buffer_scatter, unpad_indices = process_topk_ids(
+            expanded_expert_idx,
+            global_num_experts,
+            ep_group.world_size,
+            max_row_per_ep_rank,
+            num_tokens,
+            top_k
+        )
+        hidden_states_pad_idx = torch.zeros(
+            expert_idx_buffer_scatter.shape,
+            dtype=expert_idx_buffer_scatter.dtype,
+            device=expert_idx_buffer_scatter.device
+        )
+        non_pad_len = torch.sum((expert_idx_buffer_scatter != global_num_experts).to(torch.int32))
+        hidden_states_pad_idx[expert_idx_buffer_scatter != global_num_experts] = torch.arange(
+            non_pad_len,
+            dtype=expert_idx_buffer_scatter.dtype,
+            device=hidden_states.device
+        )
+        expert_idx_buffer_gather = torch.empty_like(
+            expert_idx_buffer_scatter,
+            dtype=expert_idx_buffer_scatter.dtype,
+            device=expert_idx_buffer_scatter.device
+        )
+        dist.all_to_all_single(expert_idx_buffer_gather,
+                               expert_idx_buffer_scatter,
                                group=ep_group.device_group)
-        scatter_size_list = scatter_sizes.cpu().tolist()
-        gather_size_list = gather_sizes.cpu().tolist()
+        hidden_states_buffer_scatter = hidden_states[hidden_states_pad_idx]
 
-        expanded_expert_idx = expanded_expert_idx % local_num_experts
-        hidden_states = ep_group.all_to_all(hidden_states, 0, 0,
-                                            scatter_size_list,
-                                            gather_size_list)
-        local_expert_idx = ep_group.all_to_all(expanded_expert_idx, 0, 0,
-                                               scatter_size_list,
-                                               gather_size_list)
+        hidden_states_buffer_gather = torch.empty_like(
+            hidden_states_buffer_scatter,
+            dtype=hidden_states_buffer_scatter.dtype,
+            device=hidden_states_buffer_scatter.device
+        )
 
-        sorted_local_expert_idx, sorted_idx = torch.sort(local_expert_idx)
-
+        dist.all_to_all_single(hidden_states_buffer_gather,
+                               hidden_states_buffer_scatter,
+                               group=ep_group.device_group)
+        mask = expert_idx_buffer_gather != global_num_experts
+        local_expert_idx = expert_idx_buffer_gather[mask] - ep_group.rank * (global_num_experts // ep_group.world_size)
+        hidden_states = hidden_states_buffer_gather[mask]
+        idx_type = local_expert_idx.dtype
+        sorted_local_expert_idx, sorted_idx = torch.sort(local_expert_idx.float())
+        sorted_local_expert_idx = sorted_local_expert_idx.to(idx_type)
         expert_tokens = torch_npu.npu_moe_compute_expert_tokens(
             sorted_local_expert_idx, local_num_experts).to(torch.int64)
 
@@ -303,12 +327,33 @@ def fused_experts_with_all2all(
                               group_list_type=group_list_type)
 
     if expert_map is not None:
-        resorted_idx = torch.argsort(sorted_idx)
+        idx_type = sorted_idx.dtype
+        resorted_idx = torch.argsort(sorted_idx.float()).to(idx_type)
         hidden_states = hidden_states[resorted_idx]
-        hidden_states = ep_group.all_to_all(hidden_states, 0, 0,
-                                            gather_size_list,
-                                            scatter_size_list)
-
+        hidden_states_scatter = torch.zeros(
+            (mask.shape[0], hidden_states.shape[1]),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device
+        )
+        hidden_states_scatter[mask] = hidden_states
+        hidden_states_gatter = torch.empty_like(
+            hidden_states_scatter,
+            dtype=hidden_states_scatter.dtype,
+            device=hidden_states_scatter.device
+        )
+        dist.all_to_all_single(hidden_states_gatter,
+                               hidden_states_scatter,
+                               group=ep_group.device_group)
+        hidden_states_gatter = hidden_states_gatter[expert_idx_buffer_scatter != global_num_experts]
+        if hidden_states_gatter.shape[0] != row_idx_len:
+            hidden_states = torch.zeros(
+                (row_idx_len, hidden_states.shape[1]),
+                dtype=hidden_states.dtype,
+                device=hidden_states.device
+            )
+            hidden_states[unpad_indices != -1] = hidden_states_gatter
+        else:
+            hidden_states = hidden_states_gatter
         final_hidden_states = torch_npu.npu_moe_finalize_routing(
             hidden_states,
             skip1=None,
