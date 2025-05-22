@@ -44,6 +44,64 @@ from vllm_ascend.distributed.parallel_state import get_ep_group, get_etp_group
 VLLM_ENABLE_MC2: bool = envs_ascend.VLLM_ENABLE_MC2
 USING_LCCL_COM: bool = envs_ascend.USING_LCCL_COM
 
+def process_topk_ids(
+    topk_ids: torch.Tensor,
+    expert_num: int,
+    ep_size: int,
+    max_row_per_ep_rank: int,
+    num_tokens: int,
+    top_k: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    original_total_elements = num_tokens * top_k
+    device = topk_ids.device
+    original_dtype = topk_ids.dtype
+
+    if original_total_elements == 0:
+        output_len = ep_size * max_row_per_ep_rank
+        topk_ids_pad = torch.full((output_len,), expert_num, dtype=original_dtype, device=device)
+        unpad_indices = torch.full((original_total_elements,), -1, dtype=torch.long, device=device)
+        return topk_ids_pad, unpad_indices
+
+    experts_per_ep_rank_val = expert_num // ep_size
+    if experts_per_ep_rank_val == 0:
+        raise ValueError("expert_num // ep_size is 0, which leads to division by zero in ep_rank calculation. "
+                         "Ensure expert_num >= ep_size.")
+
+    assigned_ep_rank = topk_ids // experts_per_ep_rank_val
+    indices_arange = torch.arange(topk_ids.shape[0], device=device)
+
+    is_new_segment = torch.cat((
+        torch.tensor([True], device=device),
+        assigned_ep_rank[1:] != assigned_ep_rank[:-1]
+    ))
+
+    segment_start_indices_in_topk = is_new_segment.nonzero(as_tuple=True)[0]
+    lookup_idx_for_segment_starts = torch.searchsorted(
+        segment_start_indices_in_topk, indices_arange, right=True
+    ) - 1
+    start_offset_for_each_token = segment_start_indices_in_topk[lookup_idx_for_segment_starts]
+
+    token_intra_ep_rank_idx = indices_arange - start_offset_for_each_token
+    is_kept_mask = token_intra_ep_rank_idx < max_row_per_ep_rank
+    original_indices_all = indices_arange
+    kept_original_indices = original_indices_all[is_kept_mask]
+    kept_topk_ids = topk_ids[is_kept_mask]
+    kept_assigned_ep_rank = assigned_ep_rank[is_kept_mask]
+    kept_token_intra_ep_rank_idx = token_intra_ep_rank_idx[is_kept_mask]
+    output_len = ep_size * max_row_per_ep_rank
+    topk_ids_pad = torch.full((output_len,), expert_num, dtype=original_dtype, device=device)
+
+    if len(kept_topk_ids) > 0:
+        destination_indices_in_pad = kept_assigned_ep_rank * max_row_per_ep_rank + kept_token_intra_ep_rank_idx
+        topk_ids_pad[destination_indices_in_pad] = kept_topk_ids
+
+    unpad_indices = torch.full((original_total_elements,), -1, dtype=torch.long, device=device)
+
+    if len(kept_original_indices) > 0:
+        indices_in_recovered_condensed_list = torch.arange(len(kept_original_indices), device=device, dtype=torch.long)
+        unpad_indices[kept_original_indices] = indices_in_recovered_condensed_list
+
+    return topk_ids_pad, unpad_indices
 
 def fused_experts_with_mc2(
     hidden_states: torch.Tensor,
