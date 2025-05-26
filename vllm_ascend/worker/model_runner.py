@@ -1341,6 +1341,13 @@ class NPUModelRunner(NPUModelRunnerBase[ModelInputForNPUWithSamplingMetadata]):
                                 device=previous_hidden_states.device)
                 ])
         else:
+            import torch_npu
+            for name, params in self.model.named_parameters():
+                if ".weight" in name:
+                    if ("mlp" in name or "self_attn" in name) and ('gate.weight' not in name) and ('.weight_scale' not in name) and ('.weight_offset' not in name):
+                        params.data = torch_npu.npu_format_cast(params.data, 29)
+                        # if torch.distributed.get_rank() == 0:
+                            # print("NZ parameter %s; size: %s, dtype: %s torch_npu.get_npu_format %s", name, params.size(), params.dtype, torch_npu.get_npu_format(params.data))
             model_executable = self.model
 
         # Receive KV cache in distributed KV cache transfer setting
@@ -1363,11 +1370,11 @@ class NPUModelRunner(NPUModelRunnerBase[ModelInputForNPUWithSamplingMetadata]):
 
         if get_dp_group().world_size > 1:
             bypass_model_exec_tensor = torch.tensor(
-                1, dtype=torch.int32) if bypass_model_exec else torch.tensor(
-                    0, dtype=torch.int32)
+                1, dtype=torch.int32, device = kv_caches[0].device) if bypass_model_exec else torch.tensor(
+                    0, dtype=torch.int32, device = kv_caches[0].device)
             torch.distributed.all_reduce(bypass_model_exec_tensor,
                                          op=torch.distributed.ReduceOp.MIN,
-                                         group=get_dp_group().cpu_group)
+                                         group=get_dp_group().device_group)
             # If there is any group have not receive the necessary hidden states or kv_cache, we force all the dp group execute.
             if bypass_model_exec_tensor.item() == 0:
                 bypass_model_exec = False

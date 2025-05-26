@@ -516,7 +516,7 @@ def fused_experts(
                             num_experts)).to(topk_ids.dtype)
 
         # Sort by local expert IDs
-        sort_indices = torch.argsort(filtered_experts)
+        sort_indices = torch.argsort(filtered_experts.view(torch.float32))
         sorted_token_indices = token_indices[sort_indices]
         sorted_weights = filtered_weights[sort_indices]
 
@@ -811,8 +811,8 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                 e_score_correction_bias=e_score_correction_bias,
             )
 
-        if enable_force_load_balance:
-            topk_ids = torch.randint_like(topk_ids, 0, global_num_experts)
+        # if enable_force_load_balance:
+        #     topk_ids = torch.randint_like(topk_ids, 0, global_num_experts)
 
         if VLLM_ENABLE_MC2 and not is_prefill:
             return fused_experts_with_mc2(
