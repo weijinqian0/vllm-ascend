@@ -11,7 +11,8 @@ from vllm_ascend.distributed.tensor_parallel import gather_from_sequence_paralle
     reduce_scatter_last_dim_to_tensor_parallel_region
 
 from vllm_ascend.ops.comm_utils import async_all_to_all
-from vllm_ascend.ops.moe_dispatcher.moe_utils import get_capacity, permute, sort_chunks_by_idxs, unpermute
+from vllm_ascend.ops.moe_dispatcher.moe_utils import get_capacity, permute, sort_chunks_by_idxs, unpermute, \
+    topk_softmax_with_capacity
 
 """ We use the following notation throughout this file:
      H: hidden size
@@ -38,20 +39,46 @@ def is_less_or_equal_rc2_cann_version():
 cann_version_check = is_less_or_equal_rc2_cann_version()
 
 
-@dataclass
-class MoeDispatcherConfig:
-    num_local_experts: int = 0
-    num_moe_experts: int = 0
-    local_expert_indices: int = 0
-    moe_pad_expert_input_to_capacity: bool = False
-    moe_expert_capacity_factor: float = None
-    moe_router_topk: int = 2
-    moe_grouped_gemm: bool = False
+class MoeDispatcherBuilder:
+    def __init__(self):
+        self.num_local_experts: int = 0
+        self.num_moe_experts: int = 0
+        self.moe_pad_expert_input_to_capacity: bool = False
+        self.moe_expert_capacity_factor: float = None
+        self.moe_router_topk: int = 2
+        self.moe_grouped_gemm: bool = False
+
+    def set_num_local_experts(self, num_local_experts):
+        self.num_local_experts = num_local_experts
+        return self
+
+    def set_num_moe_experts(self, num_moe_experts):
+        self.num_moe_experts = num_moe_experts
+        return self
+
+    def set_moe_pad_expert_input_to_capacity(self, moe_pad_expert_input_to_capacity):
+        self.moe_pad_expert_input_to_capacity = moe_pad_expert_input_to_capacity
+        return self
+
+    def set_moe_expert_capacity_factor(self, moe_expert_capacity_factor):
+        self.moe_expert_capacity_factor = moe_expert_capacity_factor
+        return self
+
+    def set_moe_router_topk(self, moe_router_topk):
+        self.moe_router_topk = moe_router_topk
+        return self
+
+    def set_moe_grouped_gemm(self, moe_grouped_gemm):
+        self.moe_grouped_gemm = moe_grouped_gemm
+        return self
+
+    def build(self):
+        return MoEDispatcher(self)
 
 
 class MoEDispatcher:
 
-    def __init__(self, config: MoeDispatcherConfig) -> None:
+    def __init__(self, config: MoeDispatcherBuilder) -> None:
         """
         Initialize the MoE Token Dispatcher.
         """
@@ -65,6 +92,10 @@ class MoEDispatcher:
     def ep_group(self):
         """Get expert model parallel group."""
         return get_ep_group().device_group
+
+    @property
+    def ep_rank(self):
+        return get_ep_group().rank_in_group
 
     @property
     def ep_size(self):
@@ -91,7 +122,7 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
     called as 'MoEAlltoAllSEQTokenDispatcher' after Megatron core_r0.9.0.
     """
 
-    def __init__(self, config: MoeDispatcherConfig):
+    def __init__(self, config: MoeDispatcherBuilder):
         """
         Initialize the AlltoAllSeq token dispatcher.
 
@@ -101,13 +132,20 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
         super().__init__(config)
         self.num_local_experts = config.num_local_experts
         self.config = config
-        self.local_expert_indices = config.local_expert_indices
         # use MOEAlltoAllSEQTokenDispatcher to init
 
         self.hidden_shape = None
         self.num_input_tokens = None
         self.num_experts = config.num_moe_experts
         assert self.num_local_experts > 0, "Expected at least one expert"
+
+        local_expert_indices_offset = (
+                self.ep_rank * self.num_local_experts
+        )
+
+        self.local_expert_indices = [
+            local_expert_indices_offset + i for i in range(self.num_local_experts)
+        ]
         assert (
                 len(self.local_expert_indices) == self.num_local_experts
         ), "Invalid local expert indices"
@@ -254,6 +292,18 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
 
         return num_tokens_per_local_expert
 
+    def routing(self, probs):
+        seq_length, bsz = probs.shape[:2]
+        probs = probs.view(-1, self.config.num_moe_experts)
+
+        scores, routing_map, _ = topk_softmax_with_capacity(
+            probs,
+            self.config.moe_router_topk,
+            capacity_factor=self.config.moe_expert_capacity_factor,
+            pad_to_capacity=self.config.moe_pad_expert_input_to_capacity
+        )
+        return scores, routing_map
+
     def preprocess_overlap(self, routing_map):
         num_tokens_per_local_expert = self.preprocess(routing_map)
         self.num_global_tokens_per_local_expert = self.num_global_tokens_per_local_expert
@@ -269,9 +319,6 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
             hidden_states: torch.Tensor,
             probs: torch.Tensor,
             routing_map: torch.Tensor,
-            shared_experts,
-            shared_expert_gate,
-            moe_ctx=None
     ):
         """
         Dispatch tokens to local experts using AlltoAllSeq communication.
@@ -282,10 +329,6 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
                 Shape: [num_tokens, num_experts].
             routing_map (torch.Tensor): Mapping of tokens assigned to experts.
                 Shape: [num_tokens, num_experts].
-            shared_experts: A Mindspeed shared_experts Model.
-            shared_expert_gate: Use shared_expert_gate to replace reduce_scatter
-                in shared_expert with TP=1.
-            moe_ctx: Config settings from MoELayerOverlapAll2All.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]:
@@ -333,16 +376,17 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
         )
 
         # shared experts compute
-        if shared_experts is not None:
-            (share_experts_output), *_ = shared_experts(hidden_states)
-            if shared_expert_gate is not None:
-                with torch.enable_grad():
-                    # tp not support shared expert gate for now
-                    if self.tp_ep_size > 1:
-                        share_experts_output = reduce_scatter_to_sequence_parallel_region(share_experts_output,
-                                                                                          group=self.tp_ep_group)
-                    share_experts_output = torch.nn.functional.sigmoid(
-                        shared_expert_gate(hidden_states)) * share_experts_output
+        if self.shared_experts is not None:
+            (share_experts_output), *_ = self.shared_experts(hidden_states)
+            # todo
+            # if shared_expert_gate is not None:
+            #     with torch.enable_grad():
+            #         # tp not support shared expert gate for now
+            #         if self.tp_ep_size > 1:
+            #             share_experts_output = reduce_scatter_to_sequence_parallel_region(share_experts_output,
+            #                                                                               group=self.tp_ep_group)
+            #         share_experts_output = torch.nn.functional.sigmoid(
+            #             shared_expert_gate(hidden_states)) * share_experts_output
         else:
             share_experts_output = None
 
@@ -368,8 +412,6 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
                 torch.cuda.current_stream().synchronize()
 
             return global_input_tokens
-
-        moe_ctx.sort_input_by_local_experts = self.sort_input_by_local_experts
 
         # token premute2 input
         global_input_tokens = alltoall_token_permutation2(global_input_tokens)

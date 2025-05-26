@@ -27,6 +27,7 @@ from vllm.distributed.parallel_state import get_dp_group, GroupCoordinator
 from vllm.model_executor.layers.fused_moe.layer import (
     FusedMoE, UnquantizedFusedMoEMethod, determine_expert_map)
 
+from vllm_ascend.ops.moe_dispatcher.token_dispatcher import MoeDispatcherBuilder
 from vllm_ascend.utils import vllm_version_is
 
 if not (vllm_version_is("0.8.5") or vllm_version_is("0.8.5.post1")):
@@ -438,6 +439,32 @@ def fused_experts_with_all2all(
     return final_hidden_states
 
 
+def fused_experts_with_all2allv(token_dispatcher,
+    logits,
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    top_k: int,
+    expert_map: torch.Tensor = None,
+    ep_group: GroupCoordinator = None):
+    probs, routing_map = token_dispatcher.router(logits)
+    (share_experts_output, dispatched_input, tokens_per_expert) = token_dispatcher.token_permutation(
+        hidden_states, logits, routing_map
+    )
+    hidden_states_wrapper = [dispatched_input]
+    del dispatched_input
+
+    expert_output = apply_mlp(hidden_states_wrapper,
+                              w1,
+                              w2,
+                              tokens_per_expert)
+    output, mlp_bias = token_dispatcher.token_unpermutation(expert_output)
+    return output
+
+
+
 def fused_experts(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
@@ -832,6 +859,19 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                                  topk_ids=topk_ids,
                                  top_k=top_k,
                                  expert_map=expert_map)
+        elif 'token_dispatcher' in kwargs:
+            token_dispatcher = kwargs.get('token_dispatcher')
+            return fused_experts_with_all2allv(token_dispatcher=token_dispatcher,
+                                        logits=router_logits,
+                                        hidden_states=x,
+                                        w1=layer.w13_weight,
+                                        w2=layer.w2_weight,
+                                        topk_weights=topk_weights,
+                                        topk_ids=topk_ids,
+                                        top_k=top_k,
+                                        expert_map=expert_map,
+                                        ep_group=self.ep_group
+                                        )
         else:
             return fused_experts_with_all2all(hidden_states=x,
                                               w1=layer.w13_weight,
@@ -985,6 +1025,11 @@ class AscendFusedMoE(FusedMoE):
             moe_quant_params["intermediate_size_full"] = intermediate_size
 
         self.quant_method.create_weights(layer=self, **moe_quant_params)
+        self.token_dispatcher = (MoeDispatcherBuilder()
+                                 .set_num_moe_experts(self.global_num_experts)
+                                 .set_num_local_experts(self.local_num_experts)
+                                 .set_moe_router_topk(top_k)
+                                 .build())
 
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -1019,7 +1064,8 @@ class AscendFusedMoE(FusedMoE):
             e_score_correction_bias=self.e_score_correction_bias,
             is_prefill=is_prefill,
             enable_force_load_balance=enable_force_load_balance,
-            dp_size=self.dp_size)
+            dp_size=self.dp_size,
+            token_dispatcher=self.token_dispatcher)
 
         if VLLM_ENABLE_MC2 and not is_prefill:
             ...
