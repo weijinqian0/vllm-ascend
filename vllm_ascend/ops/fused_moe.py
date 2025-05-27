@@ -999,11 +999,12 @@ class AscendFusedMoE(FusedMoE):
             moe_quant_params["intermediate_size_full"] = intermediate_size
 
         self.quant_method.create_weights(layer=self, **moe_quant_params)
-        self.token_dispatcher = (MoeDispatcherBuilder()
+        moe_dispatcher_config = (MoeDispatcherConfig()
                                  .set_num_moe_experts(self.global_num_experts)
                                  .set_num_local_experts(self.local_num_experts)
                                  .set_moe_router_topk(top_k)
                                  .build())
+        self.token_dispatcher = MoEAlltoAllSeqOverLapDispatcher(moe_dispatcher_config)
 
     def forward(self,
                 hidden_states: torch.Tensor,
