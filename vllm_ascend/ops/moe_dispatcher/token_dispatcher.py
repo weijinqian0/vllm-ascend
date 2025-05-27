@@ -9,6 +9,9 @@ from vllm_ascend.distributed.parallel_state import get_ep_group, get_etp_group
 from vllm_ascend.distributed.tensor_parallel import gather_from_sequence_parallel_region, all_to_all_sp2hp, \
     reduce_scatter_to_sequence_parallel_region, all_gather_last_dim_from_tensor_parallel_region, all_to_all_hp2sp, \
     reduce_scatter_last_dim_to_tensor_parallel_region
+from vllm_ascend.ops.moe_dispatcher.ops import npu_moe_token_permute
+from vllm_ascend.ops.moe_dispatcher.ops import npu_moe_token_unpermute
+
 
 from vllm_ascend.ops.comm_utils import async_all_to_all
 from vllm_ascend.ops.moe_dispatcher.moe_utils import get_capacity, permute, sort_chunks_by_idxs, unpermute, \
