@@ -3,6 +3,7 @@
 import math
 from typing import Optional
 import torch
+import torch_npu
 
 
 def group_limited_topk(
@@ -76,7 +77,7 @@ def topk_softmax_with_capacity(
         group_topk: Optional[int] = None,
         scaling_factor: Optional[float] = None,
         deterministic_mode: bool = False,
-        score_function: str = "softmax",
+        score_function: str = "sigmoid",
         expert_bias: Optional[torch.Tensor] = None,
 ):
     """Apply capacity and padding to the top-k selection.
@@ -131,20 +132,24 @@ def topk_softmax_with_capacity(
         else:
             scores, top_indices = compute_topk(logits, topk, num_groups, group_topk)
             probs = torch.softmax(scores, dim=-1, dtype=torch.float32).type_as(logits)
+        if scaling_factor:
+            probs = probs * scaling_factor
     elif score_function == "sigmoid":
-        scores = torch.sigmoid(logits)
-        if expert_bias is not None:
-            scores_for_routing = scores + expert_bias
-            _, top_indices = compute_topk(scores_for_routing, topk, num_groups, group_topk)
-            scores = torch.gather(scores, dim=1, index=top_indices).type_as(logits)
-        else:
-            scores, top_indices = compute_topk(scores, topk, num_groups, group_topk)
-        probs = scores / (scores.sum(dim=-1, keepdim=True) + 1e-20) if topk > 1 else scores
+        probs, top_indices, _ = torch_npu.npu_moe_gating_top_k(
+            logits,
+            k=topk,  # topk当前写8
+            bias=expert_bias,
+            k_group=group_topk,  # fix: 4
+            group_count=num_groups,  # fix 8
+            group_select_mode=1,  # 0: group中的最大; 1: topk2.sum(fix)
+            renorm=0,  # 0: softmax->topk(fix); 1: topk->softmax
+            norm_type=1,  # 0: softmax; 1: sigmoid(fix)
+            # out_flag=False, # todo new api; 第三个输出是否输出
+            # y2_flag=False, # old api; 第三个输出是否输出
+            routed_scaling_factor=scaling_factor,
+            eps=float(1e-20))
     else:
         raise ValueError(f"Invalid score_function: {score_function}")
-
-    if scaling_factor:
-        probs = probs * scaling_factor
 
     # TODO Try using element-wise operations instead of scatter?
     topk_masked_gates = torch.zeros_like(logits).scatter(1, top_indices, probs)
