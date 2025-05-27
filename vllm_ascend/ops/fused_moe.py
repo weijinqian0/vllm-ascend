@@ -27,7 +27,7 @@ from vllm.distributed.parallel_state import get_dp_group, GroupCoordinator
 from vllm.model_executor.layers.fused_moe.layer import (
     FusedMoE, UnquantizedFusedMoEMethod, determine_expert_map)
 
-from vllm_ascend.ops.moe_dispatcher.token_dispatcher import MoeDispatcherBuilder
+from vllm_ascend.ops.moe_dispatcher.token_dispatcher import MoeDispatcherConfig, MoEAlltoAllSeqOverLapDispatcher
 from vllm_ascend.utils import vllm_version_is
 
 if not (vllm_version_is("0.8.5") or vllm_version_is("0.8.5.post1")):
@@ -1028,11 +1028,12 @@ class AscendFusedMoE(FusedMoE):
             moe_quant_params["intermediate_size_full"] = intermediate_size
 
         self.quant_method.create_weights(layer=self, **moe_quant_params)
-        self.token_dispatcher = (MoeDispatcherBuilder()
+        moe_dispatcher_config = (MoeDispatcherConfig()
                                  .set_num_moe_experts(self.global_num_experts)
                                  .set_num_local_experts(self.local_num_experts)
                                  .set_moe_router_topk(top_k)
                                  .build())
+        self.token_dispatcher = MoEAlltoAllSeqOverLapDispatcher(moe_dispatcher_config)
 
     def forward(self,
                 hidden_states: torch.Tensor,
