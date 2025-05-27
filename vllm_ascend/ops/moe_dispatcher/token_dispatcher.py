@@ -39,7 +39,7 @@ def is_less_or_equal_rc2_cann_version():
 cann_version_check = is_less_or_equal_rc2_cann_version()
 
 
-class MoeDispatcherBuilder:
+class MoeDispatcherConfig:
     def __init__(self):
         self.num_local_experts: int = 0
         self.num_moe_experts: int = 0
@@ -73,12 +73,12 @@ class MoeDispatcherBuilder:
         return self
 
     def build(self):
-        return MoEAlltoAllSeqOverLapDispatcher(self)
+        return self
 
 
 class MoEDispatcher:
 
-    def __init__(self, config: MoeDispatcherBuilder) -> None:
+    def __init__(self, config: MoeDispatcherConfig) -> None:
         """
         Initialize the MoE Token Dispatcher.
         """
@@ -122,7 +122,7 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
     called as 'MoEAlltoAllSEQTokenDispatcher' after Megatron core_r0.9.0.
     """
 
-    def __init__(self, config: MoeDispatcherBuilder):
+    def __init__(self, config: MoeDispatcherConfig):
         """
         Initialize the AlltoAllSeq token dispatcher.
 
@@ -308,7 +308,6 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
         self.output_splits = self.output_splits
         self.num_out_tokens = self.num_out_tokens
         self.num_global_tokens_per_local_expert_cpu = self.num_global_tokens_per_local_expert_cpu
-        self.comm_stream = self.comm_stream
         return num_tokens_per_local_expert
 
     def token_permutation(
