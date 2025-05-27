@@ -334,6 +334,8 @@ def sort_chunks_by_idxs(
         input: torch.Tensor, split_sizes: torch.Tensor, sorted_idxs: torch.Tensor, fused: bool = False
 ):
     """Split and sort the input tensor based on the split_sizes and sorted indices."""
+    if input.shape[0] == 0:
+        return input
 
     input = torch.split(input, split_sizes.tolist(), dim=0)
     output = torch.cat([input[i] for i in sorted_idxs.tolist()], dim=0)

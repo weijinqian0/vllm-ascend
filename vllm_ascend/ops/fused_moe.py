@@ -217,7 +217,6 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
               w1: torch.Tensor,
               w2: torch.Tensor,
               group_list: torch.Tensor,
-              dynamic_scale: torch.Tensor = None,
               group_list_type: int = 1) -> torch.Tensor:
     """
     apply MLP: gate_up_proj -> swiglu -> down_proj
@@ -248,7 +247,7 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
         x=[hidden_states],
         weight=[w1],
         split_item=2,
-        group_list_type=0,
+        group_list_type=group_list_type,
         group_type=0,
         group_list=group_list,
     )
@@ -262,7 +261,7 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
         x=[hidden_states],
         weight=[w2],
         split_item=2,
-        group_list_type=0,
+        group_list_type=group_list_type,
         group_type=0,
         group_list=group_list,
     )
@@ -448,9 +447,9 @@ def fused_experts_with_all2allv(token_dispatcher,
     top_k: int,
     expert_map: torch.Tensor = None,
     ep_group: GroupCoordinator = None):
-    probs, routing_map = token_dispatcher.router(logits)
+    probs, routing_map = token_dispatcher.routing(logits)
     (share_experts_output, dispatched_input, tokens_per_expert) = token_dispatcher.token_permutation(
-        hidden_states, logits, routing_map
+        hidden_states, probs, routing_map
     )
     hidden_states_wrapper = [dispatched_input]
     del dispatched_input
@@ -810,19 +809,23 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
     ) -> torch.Tensor:
         # NOTE: now npu_moe_gating_top_k can only support `group_count=256` pattern
         if global_num_experts == 256:
-            topk_weights, topk_ids, _ = torch_npu.npu_moe_gating_top_k(
-                router_logits,
-                k=top_k,  # topk当前写8
-                bias=e_score_correction_bias,
-                k_group=topk_group,  # fix: 4
-                group_count=num_expert_group,  # fix 8
-                group_select_mode=1,  # 0: group中的最大; 1: topk2.sum(fix)
-                renorm=0,  # 0: softmax->topk(fix); 1: topk->softmax
-                norm_type=1,  # 0: softmax; 1: sigmoid(fix)
-                # out_flag=False, # todo new api; 第三个输出是否输出
-                # y2_flag=False, # old api; 第三个输出是否输出
-                routed_scaling_factor=1,
-                eps=float(1e-20))
+            if not is_prefill:
+                topk_weights, topk_ids, _ = torch_npu.npu_moe_gating_top_k(
+                    router_logits,
+                    k=top_k,  # topk当前写8
+                    bias=e_score_correction_bias,
+                    k_group=topk_group,  # fix: 4
+                    group_count=num_expert_group,  # fix 8
+                    group_select_mode=1,  # 0: group中的最大; 1: topk2.sum(fix)
+                    renorm=0,  # 0: softmax->topk(fix); 1: topk->softmax
+                    norm_type=1,  # 0: softmax; 1: sigmoid(fix)
+                    # out_flag=False, # todo new api; 第三个输出是否输出
+                    # y2_flag=False, # old api; 第三个输出是否输出
+                    routed_scaling_factor=1,
+                    eps=float(1e-20))
+            else:
+                topk_weights = None
+                topk_ids = None
         else:
             topk_weights, topk_ids = select_experts(
                 hidden_states=x,
