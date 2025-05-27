@@ -841,7 +841,7 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                 e_score_correction_bias=e_score_correction_bias,
             )
 
-        if enable_force_load_balance:
+        if enable_force_load_balance and 'token_dispatcher' not in kwargs:
             topk_ids = torch.randint_like(topk_ids, 0, global_num_experts)
 
         if VLLM_ENABLE_MC2 and not is_prefill:
