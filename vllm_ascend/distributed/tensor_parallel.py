@@ -24,11 +24,11 @@ def _gather_along_first_dim(input_, group, output_split_sizes=None):
     if output_split_sizes is None:
         dim_size[0] = dim_size[0] * world_size
 
-        output = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
+        output = torch.empty(dim_size, dtype=input_.dtype, device=torch.npu.current_device())
         torch.distributed.all_gather_into_tensor(output, input_.contiguous(), group=group)
     else:
         dim_size[0] = sum(output_split_sizes)
-        output = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
+        output = torch.empty(dim_size, dtype=input_.dtype, device=torch.npu.current_device())
         output_tensor_list = list(torch.split(output, output_split_sizes, dim=0))
         torch.distributed.all_gather(output_tensor_list, input_, group=group)
 
@@ -46,7 +46,7 @@ def _gather_along_last_dim(input_, group):
     dim_size = list(input_.size())
     dim_size[0] = dim_size[0] * world_size
 
-    output = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
+    output = torch.empty(dim_size, dtype=input_.dtype, device=torch.npu.current_device())
     torch.distributed.all_gather_into_tensor(
         output, input_.contiguous(), group=group
     )
@@ -80,7 +80,7 @@ def _reduce_scatter_along_first_dim(
 
         dim_size[0] = dim_size[0] // world_size
 
-        output = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
+        output = torch.empty(dim_size, dtype=input_.dtype, device=torch.npu.current_device())
         torch.distributed.reduce_scatter_tensor(output, input_.contiguous(), group=group)
     else:
         rank = torch.distributed.get_rank(group)
@@ -146,7 +146,7 @@ def all_to_all(group, input, output_split_sizes=None, input_split_sizes=None):
         output = input.new_empty(
             size=[sum(output_split_sizes)] + list(input.size()[1:]),
             dtype=input.dtype,
-            device=torch.cuda.current_device(),
+            device=torch.npu.current_device(),
         )
     torch.distributed.all_to_all_single(
         output,
