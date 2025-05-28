@@ -50,6 +50,10 @@ class MoeDispatcherConfig:
         self.moe_expert_capacity_factor: float = None
         self.moe_router_topk: int = 2
         self.moe_grouped_gemm: bool = False
+        self.group_topk: int = 0
+        self.num_groups: int = 1
+        self.expert_bias: torch.Tensor = None
+        self.scaling_factor: float = None
 
     def set_num_local_experts(self, num_local_experts):
         self.num_local_experts = num_local_experts
@@ -73,6 +77,22 @@ class MoeDispatcherConfig:
 
     def set_moe_grouped_gemm(self, moe_grouped_gemm):
         self.moe_grouped_gemm = moe_grouped_gemm
+        return self
+
+    def set_group_topk(self, group_topk):
+        self.group_topk = group_topk
+        return self
+
+    def set_num_groups(self, num_groups):
+        self.num_groups = num_groups
+        return self
+
+    def set_expert_bias(self, expert_bias):
+        self.expert_bias = expert_bias
+        return self
+
+    def set_scaling_factor(self, scaling_factor):
+        self.scaling_factor = scaling_factor
         return self
 
     def build(self):
@@ -300,7 +320,11 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
             probs,
             self.config.moe_router_topk,
             capacity_factor=self.config.moe_expert_capacity_factor,
-            pad_to_capacity=self.config.moe_pad_expert_input_to_capacity
+            pad_to_capacity=self.config.moe_pad_expert_input_to_capacity,
+            group_topk=self.config.group_topk,
+            num_groups=self.config.num_groups,
+            expert_bias=self.config.expert_bias,
+            scaling_factor=self.config.scaling_factor
         )
         return scores, routing_map
 

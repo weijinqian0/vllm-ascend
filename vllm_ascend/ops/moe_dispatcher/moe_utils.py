@@ -152,8 +152,8 @@ def topk_softmax_with_capacity(
         raise ValueError(f"Invalid score_function: {score_function}")
 
     # TODO Try using element-wise operations instead of scatter?
-    topk_masked_gates = torch.zeros_like(logits).scatter(1, top_indices, probs)
-    topk_map = torch.zeros_like(logits).int().scatter(1, top_indices, 1).bool()
+    topk_masked_gates = torch.zeros_like(logits).scatter(1, top_indices.type(torch.int64), probs)
+    topk_map = torch.zeros_like(logits).int().scatter(1, top_indices.type(torch.int64), 1).bool()
     tokens_per_expert = topk_map.sum(dim=0)
 
     if capacity_factor is None:
