@@ -158,7 +158,7 @@ def topk_softmax_with_capacity(
 
     if capacity_factor is None:
         # TopK without capacity
-        return topk_masked_gates, topk_map, tokens_per_expert
+        return topk_masked_gates, topk_map, tokens_per_expert, top_indices
     else:
         # TopK with capacity
         expert_capacity = get_capacity(
@@ -184,7 +184,7 @@ def topk_softmax_with_capacity(
             # Get exceed mask and maskout exceeded probs and indices
             final_map = torch.logical_and(topk_map, capacity_mask)
             final_probs = topk_masked_gates * final_map
-        return final_probs, final_map, tokens_per_expert
+        return final_probs, final_map, tokens_per_expert, top_indices
 
 
 def get_capacity(num_tokens: int, num_experts: int, capacity_factor: float, min_capacity=None):
