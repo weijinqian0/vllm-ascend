@@ -3,14 +3,15 @@
 from dataclasses import dataclass
 
 import torch
+from numpy.ma.core import indices
 from torch_npu.utils.collect_env import get_cann_version
 
 from vllm_ascend.distributed.parallel_state import get_ep_group, get_etp_group
 from vllm_ascend.distributed.tensor_parallel import gather_from_sequence_parallel_region, all_to_all_sp2hp, \
     reduce_scatter_to_sequence_parallel_region, all_gather_last_dim_from_tensor_parallel_region, all_to_all_hp2sp, \
     reduce_scatter_last_dim_to_tensor_parallel_region
-from vllm_ascend.ops.moe_dispatcher.ops import npu_moe_token_permute
-from vllm_ascend.ops.moe_dispatcher.ops import npu_moe_token_unpermute
+from vllm_ascend.ops.moe_dispatcher.ops.npu_moe_token_permute import npu_moe_token_permute
+from vllm_ascend.ops.moe_dispatcher.ops.npu_moe_token_unpermute import npu_moe_token_unpermute
 
 
 from vllm_ascend.ops.comm_utils import async_all_to_all
@@ -54,6 +55,7 @@ class MoeDispatcherConfig:
         self.num_groups: int = 1
         self.expert_bias: torch.Tensor = None
         self.scaling_factor: float = None
+        self.is_fused: bool = True
 
     def set_num_local_experts(self, num_local_experts):
         self.num_local_experts = num_local_experts
@@ -93,6 +95,10 @@ class MoeDispatcherConfig:
 
     def set_scaling_factor(self, scaling_factor):
         self.scaling_factor = scaling_factor
+        return self
+
+    def set_is_fused(self, is_fused):
+        self.is_fused = is_fused
         return self
 
     def build(self):
@@ -316,7 +322,7 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
         seq_length, bsz = probs.shape[:2]
         probs = probs.view(-1, self.config.num_moe_experts)
 
-        scores, routing_map, _ = topk_softmax_with_capacity(
+        scores, routing_map, _, top_indices = topk_softmax_with_capacity(
             probs,
             self.config.moe_router_topk,
             capacity_factor=self.config.moe_expert_capacity_factor,
@@ -326,6 +332,7 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
             expert_bias=self.config.expert_bias,
             scaling_factor=self.config.scaling_factor
         )
+        self.top_indices = top_indices
         return scores, routing_map
 
     def preprocess_overlap(self, routing_map):
@@ -374,11 +381,18 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
 
             if self.cuda_sync_point == "before_permutation_1":
                 torch.npu.current_stream().synchronize()
-            permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
-                hidden_states,
-                routing_map,
-                num_out_tokens=self.num_out_tokens,
-            )
+            if self.config.is_fused:
+                permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
+                    hidden_states,
+                    routing_map,
+                    num_out_tokens=self.num_out_tokens,
+                )
+            else:
+                permutated_local_input_tokens, reversed_local_input_permutation_mapping = npu_moe_token_permute(
+                    tokens=hidden_states,
+                    indices=self.top_indices,
+                    num_out_tokens=self.num_out_tokens,
+                )
             return permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert
 
         permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert = alltoall_token_permutation1(
@@ -491,13 +505,23 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
 
         def alltoall_token_unpermutation2(permutated_local_input_tokens):
             # Unpermutation 1: AlltoAll output to output
-            output = unpermute(
-                permutated_local_input_tokens,
-                self.reversed_local_input_permutation_mapping,
-                probs=self.probs,
-                restore_shape=self.hidden_shape_before_permute,
-                routing_map=self.routing_map,
-            )
+            if self.config.is_fused:
+                permuted_probs = (self.probs.T.contiguous().masked_selected(self.routing_map.T.contiguos())
+                                  .view(-1, self.config.moe_router_topk))
+                output = npu_moe_token_unpermute(
+                    permuted_tokens=permutated_local_input_tokens,
+                    sorted_indices=self.reversed_local_input_permutation_mapping,
+                    probs=permuted_probs,
+                    restore_shape=self.hidden_shape_before_permute
+                )
+            else:
+                output = unpermute(
+                    permutated_local_input_tokens,
+                    self.reversed_local_input_permutation_mapping,
+                    probs=self.probs,
+                    restore_shape=self.hidden_shape_before_permute,
+                    routing_map=self.routing_map,
+                )
 
             # Perform tensor parallel AlltoAll communication
             # output: [S*B, H/TP] -> [S*B/TP, H]

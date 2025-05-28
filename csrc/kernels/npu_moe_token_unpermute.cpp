@@ -84,9 +84,6 @@ namespace {
             at::Tensor unpermuted_tokens = at::empty({num_unpermuted_tokens, permuted_tokens.size(-1)}, permuted_tokens.options());
             at::Tensor probs_value = probs.has_value() ? probs.value() : at::Tensor();
             ACLNN_CMD(aclnnMoeTokenUnpermute, permuted_tokens, sorted_indices, probs_value, padded_mode_vale, restore_shape_vale, unpermuted_tokens);
-            ctx->save_for_backward({permuted_tokens, sorted_indices, probs_value});
-            ctx->saved_data["padded_mode"] = padded_mode_vale;
-            ctx->saved_data["restore_shape"] = restore_shape;
 
             return unpermuted_tokens;
         }
