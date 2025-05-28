@@ -510,7 +510,7 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
                                   .view(-1, self.config.moe_router_topk))
                 output = npu_moe_token_unpermute(
                     permuted_tokens=permutated_local_input_tokens,
-                    sorted_indices=self.reversed_local_input_permutation_mapping,
+                    sorted_indices=self.reversed_local_input_permutation_mapping.to(torch.int64),
                     probs=permuted_probs,
                     restore_shape=self.hidden_shape_before_permute
                 )
