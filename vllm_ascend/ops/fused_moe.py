@@ -1032,6 +1032,10 @@ class AscendFusedMoE(FusedMoE):
                                  .set_num_moe_experts(self.global_num_experts)
                                  .set_num_local_experts(self.local_num_experts)
                                  .set_moe_router_topk(top_k)
+                                 .set_group_topk(topk_group)
+                                 .set_num_groups(num_expert_group)
+                                 .set_expert_bias(e_score_correction_bias)
+                                 .set_scaling_factor(1.0)
                                  .build())
         self.token_dispatcher = MoEAlltoAllSeqOverLapDispatcher(moe_dispatcher_config)
 
