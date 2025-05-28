@@ -506,7 +506,7 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
         def alltoall_token_unpermutation2(permutated_local_input_tokens):
             # Unpermutation 1: AlltoAll output to output
             if self.config.is_fused:
-                permuted_probs = (self.probs.T.contiguous().masked_select(self.routing_map.T.contiguos())
+                permuted_probs = (self.probs.T.contiguous().masked_select(self.routing_map.T.contiguous())
                                   .view(-1, self.config.moe_router_topk))
                 output = npu_moe_token_unpermute(
                     permuted_tokens=permutated_local_input_tokens,
