@@ -20,21 +20,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-
-from vllm_ascend.ops.op_builder.npu_moe_token_permute_builder import MoeTokenPermuteOpBuilder
+from vllm_ascend.ops.op_builder.builder import VllmAscendOpBuilder
 
 
-__all__ = ["npu_moe_token_permute"]
+class MoeTokenPermuteOpBuilder(VllmAscendOpBuilder):
+    OP_NAME = "npu_moe_token_permute"
 
-moe_token_permute_op_builder = MoeTokenPermuteOpBuilder()
+    def __init__(self):
+        super(MoeTokenPermuteOpBuilder, self).__init__(self.OP_NAME)
 
+    def sources(self):
+        return ['csrc/kernels/npu_moe_token_permute.cpp']
 
-def npu_moe_token_permute(
-        tokens: torch.Tensor,
-        indices: torch.Tensor,
-        num_out_tokens: int = None,
-        padded_mode: bool = False
-):
-    moe_token_permute_ops = moe_token_permute_op_builder.load()
-    return moe_token_permute_ops.npu_moe_token_permute(tokens, indices, num_out_tokens, padded_mode)
+    def include_paths(self):
+        paths = super().include_paths()
+        paths += ['csrc/kernels/inc']
+        return paths
+
+    def cxx_args(self):
+        args = super().cxx_args()
+        args += [
+            '-Wno-sign-compare',
+            '-Wno-deprecated-declarations',
+            '-Wno-return-type',
+            "-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"
+        ]
+        return args
