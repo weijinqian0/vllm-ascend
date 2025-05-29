@@ -1,10 +1,26 @@
-# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
-from dataclasses import dataclass
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Huawei Technologies Co., Ltd. All Rights Reserved.
+# Copyright 2023 The vLLM team.
+# Copyright 2023 DeepSeek-AI and the HuggingFace Inc. team. All rights reserved.
+#
+# This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
+# and OPT implementations in this library. It has been modified from its
+# original forms to accommodate minor architectural differences compared
+# to GPT-NeoX and OPT used by the Meta AI team that trained the model.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
-from numpy.ma.core import indices
-from torch_npu.utils.collect_env import get_cann_version
 
 from vllm_ascend.distributed.parallel_state import get_ep_group, get_etp_group
 from vllm_ascend.distributed.tensor_parallel import gather_from_sequence_parallel_region, all_to_all_sp2hp, \
@@ -27,20 +43,6 @@ from vllm_ascend.ops.moe_dispatcher.moe_utils import get_capacity, permute, sort
      num_local_tokens: S/TP*B
      num_global_tokens: num_local_tokens*TP*EP
 """
-
-
-def is_less_or_equal_rc2_cann_version():
-    '''
-    check Ascend CANN version.
-    '''
-    cann_starts_with = ('8.0.RC1', '8.0.RC2')
-    cann_all = ('not known', '8.0.T1', '8.0.T2', '8.0.T3', '8.0.T37', '8.0.T5', '8.0.T6', '8.0.T7',
-                '8.0.T8', '8.0.T10', '8.0.T13', '8.0.T16', '8.0.T50', '8.0.T51', '8.0.T52')
-    cann_version = get_cann_version()
-    return cann_version in cann_all or cann_version.startswith(cann_starts_with)
-
-
-cann_version_check = is_less_or_equal_rc2_cann_version()
 
 
 class MoeDispatcherConfig:
@@ -142,13 +144,10 @@ class MoEDispatcher:
 
 class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
     """
-    The legacy implementation of the AlltoAll-based token dispatcher, which handles token
+    The implementation of the AlltoAll-based token dispatcher, which handles token
     dispatching on the sequence level instead of token level. The core of this implementation
     lies in each device dispatching on the entire sequence, with the hidden state being partitioned.
-    We've kept the old version of the Mindspeed MoEAlltoAlloverlap here.
 
-    Note: This class is a modification of the MoEAlltoAllTokenDispatcher from version 0.8.0, and 
-    called as 'MoEAlltoAllSEQTokenDispatcher' after Megatron core_r0.9.0.
     """
 
     def __init__(self, config: MoeDispatcherConfig):
@@ -415,15 +414,6 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
         # shared experts compute
         if self.shared_experts is not None:
             (share_experts_output), *_ = self.shared_experts(hidden_states)
-            # todo
-            # if shared_expert_gate is not None:
-            #     with torch.enable_grad():
-            #         # tp not support shared expert gate for now
-            #         if self.tp_ep_size > 1:
-            #             share_experts_output = reduce_scatter_to_sequence_parallel_region(share_experts_output,
-            #                                                                               group=self.tp_ep_group)
-            #         share_experts_output = torch.nn.functional.sigmoid(
-            #             shared_expert_gate(hidden_states)) * share_experts_output
         else:
             share_experts_output = None
 
