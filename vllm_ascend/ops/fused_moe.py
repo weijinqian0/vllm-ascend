@@ -724,7 +724,7 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
 
         self.ep_group = get_ep_group()
         self.ep_size = self.ep_group.world_size
-        self.global_batch_size = vllm_config.scheduler_config.max_num_seqs
+        self.global_batch_size = vllm_config.scheduler_config.max_num_seqs * get_dp_group().world_size
         self.local_batch_size = self.global_batch_size // self.ep_size
         self.max_model_len = vllm_config.model_config.max_model_len
 
@@ -908,9 +908,6 @@ class AscendFusedMoE(FusedMoE):
         self.e_score_correction_bias = e_score_correction_bias
         self.expert_map = None
         self.activation = activation
-
-        self.global_batch_size = vllm_config.scheduler_config.max_num_seqs * (
-            dp_size if dp_size is not None else get_dp_group().world_size)
 
         if self.ep_size > 1:
             # Create a tensor of size num_experts filled with -1
