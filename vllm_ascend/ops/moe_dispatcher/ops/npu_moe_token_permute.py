@@ -22,10 +22,11 @@
 
 import torch
 
-from vllm_ascend.ops.op_builder.npu_moe_token_permute_builder import MoeTokenPermuteOpBuilder
 
 
 __all__ = ["npu_moe_token_permute"]
+
+from vllm_ascend.ops.moe_dispatcher.ops.op_builder.npu_moe_token_permute_builder import MoeTokenPermuteOpBuilder
 
 moe_token_permute_op_builder = MoeTokenPermuteOpBuilder()
 
