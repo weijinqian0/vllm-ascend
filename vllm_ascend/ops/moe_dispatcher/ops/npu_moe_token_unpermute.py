@@ -21,7 +21,7 @@
 # limitations under the License.
 
 import torch
-from vllm_ascend.ops.op_builder.npu_moe_token_unpermute_builder import MoeTokenUnpermuteOpBuilder
+from vllm_ascend.ops.moe_dispatcher.ops.op_builder.npu_moe_token_unpermute_builder import MoeTokenUnpermuteOpBuilder
 
 __all__ = ["npu_moe_token_unpermute"]
 

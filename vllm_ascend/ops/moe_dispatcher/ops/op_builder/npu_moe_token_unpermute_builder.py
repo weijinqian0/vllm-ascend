@@ -20,7 +20,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from vllm_ascend.ops.op_builder.builder import VllmAscendOpBuilder
+from vllm_ascend.ops.moe_dispatcher.ops.op_builder.builder import VllmAscendOpBuilder
 
 
 class MoeTokenUnpermuteOpBuilder(VllmAscendOpBuilder):
