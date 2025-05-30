@@ -276,9 +276,7 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
 def fused_experts_with_all2all(
         hidden_states: torch.Tensor,
         w1: torch.Tensor,
-        w1_scale: torch.Tensor,
         w2: torch.Tensor,
-        w2_scale: torch.Tensor,
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
         top_k: int,
@@ -309,7 +307,6 @@ def fused_experts_with_all2all(
     max_row_per_ep_rank = (-(-global_batch_size // ep_group.world_size) *
                            max_model_len // ep_group.world_size +
                            1) * top_k * 2
-    print(max_row_per_ep_rank)
     expert_idx_buffer_scatter, unpad_indices = process_topk_ids(
         expanded_expert_idx, global_num_experts, ep_group.world_size,
         max_row_per_ep_rank, num_tokens, top_k)
@@ -358,9 +355,7 @@ def fused_experts_with_all2all(
 
     hidden_states = apply_mlp(hidden_states_wrapper,
                               w1,
-                              w1_scale,
                               w2,
-                              w2_scale,
                               expert_tokens,
                               group_list_type=group_list_type)
 
@@ -824,14 +819,6 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                                  top_k=top_k,
                                  expert_map=expert_map)
         else:
-            return fused_experts_with_all2all(hidden_states=x,
-                                              w1=layer.w13_weight,
-                                              w2=layer.w2_weight,
-                                              topk_weights=topk_weights,
-                                              topk_ids=topk_ids,
-                                              top_k=top_k,
-                                              expert_map=expert_map,
-                                              ep_group=self.ep_group)
             return fused_experts_with_all2all(
                 hidden_states=x,
                 w1=layer.w13_weight,
