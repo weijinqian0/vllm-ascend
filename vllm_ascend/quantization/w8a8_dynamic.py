@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -25,71 +25,12 @@ from vllm.distributed import GroupCoordinator
 import vllm_ascend.envs as envs_ascend
 from vllm_ascend.distributed.parallel_state import get_ep_group
 from vllm_ascend.ops.fused_moe import select_experts
+from vllm_ascend.utils import dispose_tensor
 
 VLLM_ENABLE_MC2: bool = envs_ascend.VLLM_ENABLE_MC2
 
 
-def process_topk_ids(
-        topk_ids: torch.Tensor,
-        expert_num: int,
-        ep_size: int,
-        max_row_per_ep_rank: int,
-        num_tokens: int,
-        top_k: int
-) -> tuple[torch.Tensor, torch.Tensor]:
-    original_total_elements = num_tokens * top_k
-    device = topk_ids.device
-    original_dtype = topk_ids.dtype
-
-    if original_total_elements == 0:
-        output_len = ep_size * max_row_per_ep_rank
-        topk_ids_pad = torch.full((output_len,), expert_num, dtype=original_dtype, device=device)
-        unpad_indices = torch.full((original_total_elements,), -1, dtype=torch.long, device=device)
-        return topk_ids_pad, unpad_indices
-
-    experts_per_ep_rank_val = expert_num // ep_size
-    if experts_per_ep_rank_val == 0:
-        raise ValueError("expert_num // ep_size is 0, which leads to division by zero in ep_rank calculation. "
-                         "Ensure expert_num >= ep_size.")
-
-    assigned_ep_rank = topk_ids // experts_per_ep_rank_val
-    indices_arange = torch.arange(topk_ids.shape[0], device=device)
-
-    is_new_segment = torch.cat((
-        torch.tensor([True], device=device),
-        assigned_ep_rank[1:] != assigned_ep_rank[:-1]
-    ))
-
-    segment_start_indices_in_topk = is_new_segment.nonzero(as_tuple=True)[0]
-    lookup_idx_for_segment_starts = torch.searchsorted(
-        segment_start_indices_in_topk, indices_arange, right=True
-    ) - 1
-    start_offset_for_each_token = segment_start_indices_in_topk[lookup_idx_for_segment_starts]
-
-    token_intra_ep_rank_idx = indices_arange - start_offset_for_each_token
-    is_kept_mask = token_intra_ep_rank_idx < max_row_per_ep_rank
-    original_indices_all = indices_arange
-    kept_original_indices = original_indices_all[is_kept_mask]
-    kept_topk_ids = topk_ids[is_kept_mask]
-    kept_assigned_ep_rank = assigned_ep_rank[is_kept_mask]
-    kept_token_intra_ep_rank_idx = token_intra_ep_rank_idx[is_kept_mask]
-    output_len = ep_size * max_row_per_ep_rank
-    topk_ids_pad = torch.full((output_len,), expert_num, dtype=original_dtype, device=device)
-
-    if len(kept_topk_ids) > 0:
-        destination_indices_in_pad = kept_assigned_ep_rank * max_row_per_ep_rank + kept_token_intra_ep_rank_idx
-        topk_ids_pad[destination_indices_in_pad] = kept_topk_ids
-
-    unpad_indices = torch.full((original_total_elements,), -1, dtype=torch.long, device=device)
-
-    if len(kept_original_indices) > 0:
-        indices_in_recovered_condensed_list = torch.arange(len(kept_original_indices), device=device, dtype=torch.long)
-        unpad_indices[kept_original_indices] = indices_in_recovered_condensed_list
-
-    return topk_ids_pad, unpad_indices
-
-
-def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
+def apply_mlp(hidden_states: torch.Tensor,
               w1: torch.Tensor,
               w1_scale: torch.Tensor,
               w2: torch.Tensor,
@@ -101,7 +42,7 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
     apply MLP: gate_up_proj -> swiglu -> down_proj
 
     Args:
-        hidden_states_wrapper: wrapper of input hidden states with shape (num_tokens, hidden_size).
+        hidden_states: input hidden states with shape (num_tokens, hidden_size).
         w1: expert weights1 with shape
             (num_experts, hidden_size, intermediate_size * 2)
         w1_scale: weights1 scale with shape (num_experts, intermediate_size * 2)
@@ -120,11 +61,13 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
         hidden_states: output hidden states after MLP.
     """
 
-    assert len(hidden_states_wrapper) == 1
-    hidden_states = hidden_states_wrapper.pop()
     if dynamic_scale is None:
+        unquantized_hidden_states = hidden_states
         hidden_states, pertoken_scale = torch_npu.npu_dynamic_quant(
             hidden_states)
+        # Dispose the original unquantized hidden states
+        # to save npu memory because they're no longer used.
+        dispose_tensor(unquantized_hidden_states)
     else:
         pertoken_scale = dynamic_scale
 
@@ -160,16 +103,16 @@ def apply_mlp(hidden_states_wrapper: List[torch.Tensor],
 
 
 def fused_experts_with_mc2(
-        hidden_states: torch.Tensor,
-        w1: torch.Tensor,
-        w2: torch.Tensor,
-        w1_scale: torch.Tensor,
-        w2_scale: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
-        top_k: int,
-        expert_map: torch.Tensor = None,
-        moe_all_to_all_group_name: str = "",
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    top_k: int,
+    expert_map: torch.Tensor = None,
+    moe_all_to_all_group_name: str = "",
 ) -> torch.Tensor:
     global_bs = 0
     moe_expert_num = len(expert_map)
@@ -210,16 +153,13 @@ def fused_experts_with_mc2(
     output = torch_npu.npu_moe_distribute_dispatch(**kwargs)
     # comm_stream.wait_stream(torch.npu.current_stream())
     expand_x, dynamic_scale, expand_idx, expert_token_nums, ep_recv_counts = output[
-                                                                             0:5]
+        0:5]
 
     if quant_mode == 0:
         dynamic_scale = None
 
-    # place hidden_states in a list to transfer its ownership into the `apply_mlp` function
-    hidden_states_wrapper = [expand_x]
-    del expand_x
-
-    down_out_list = apply_mlp(hidden_states_wrapper,
+    # `expand_x` will be disposed in the `apply_mlp` function
+    down_out_list = apply_mlp(expand_x,
                               w1,
                               w1_scale,
                               w2,
@@ -262,16 +202,16 @@ def fused_experts_with_mc2(
 # currently expert parallelism implemented with all2all
 # is under-optimized.
 def fused_experts_with_all2all(
-        hidden_states: torch.Tensor,
-        w1: torch.Tensor,
-        w1_scale: torch.Tensor,
-        w2: torch.Tensor,
-        w2_scale: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
-        top_k: int,
-        expert_map: torch.Tensor = None,
-        ep_group: GroupCoordinator = None,
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    top_k: int,
+    expert_map: torch.Tensor = None,
+    ep_group: GroupCoordinator = None,
 ):
     original_shape = hidden_states.shape
     if len(original_shape) == 3:
@@ -289,59 +229,35 @@ def fused_experts_with_all2all(
                                 row_idx_len,
                                 dtype=torch.int32,
                                 device=device).view(top_k, -1).permute(
-            1, 0).contiguous())
+                                    1, 0).contiguous())
         hidden_states, expanded_row_idx, expanded_expert_idx = torch_npu.npu_moe_init_routing(
             hidden_states,
             row_idx=row_idx,
             expert_idx=topk_ids,
             active_num=num_tokens)
 
-        local_buffer_rows = 32 * 4096 * top_k // ep_group.world_size * 2
-        max_row_per_ep_rank = local_buffer_rows // ep_group.world_size
-        expert_idx_buffer_scatter, unpad_indices = process_topk_ids(
-            expanded_expert_idx,
-            global_num_experts,
-            ep_group.world_size,
-            max_row_per_ep_rank,
-            num_tokens,
-            top_k
-        )
-        hidden_states_pad_idx = torch.zeros(
-            expert_idx_buffer_scatter.shape,
-            dtype=expert_idx_buffer_scatter.dtype,
-            device=expert_idx_buffer_scatter.device
-        )
-        non_pad_len = torch.sum((expert_idx_buffer_scatter != global_num_experts).to(torch.int32))
-        hidden_states_pad_idx[expert_idx_buffer_scatter != global_num_experts] = torch.arange(
-            non_pad_len,
-            dtype=expert_idx_buffer_scatter.dtype,
-            device=hidden_states.device
-        )
-        expert_idx_buffer_gather = torch.empty_like(
-            expert_idx_buffer_scatter,
-            dtype=expert_idx_buffer_scatter.dtype,
-            device=expert_idx_buffer_scatter.device
-        )
-        dist.all_to_all_single(expert_idx_buffer_gather,
-                               expert_idx_buffer_scatter,
-                               group=ep_group.device_group)
-        hidden_states_buffer_scatter = hidden_states[hidden_states_pad_idx]
+        global_expert_tokens = torch.bincount(expanded_expert_idx,
+                                              minlength=global_num_experts)
+        scatter_sizes = global_expert_tokens.view(ep_group.world_size,
+                                                  -1).sum(-1)
 
-        hidden_states_buffer_gather = torch.empty_like(
-            hidden_states_buffer_scatter,
-            dtype=hidden_states_buffer_scatter.dtype,
-            device=hidden_states_buffer_scatter.device
-        )
-
-        dist.all_to_all_single(hidden_states_buffer_gather,
-                               hidden_states_buffer_scatter,
+        gather_sizes = torch.empty_like(scatter_sizes)
+        dist.all_to_all_single(gather_sizes,
+                               scatter_sizes,
                                group=ep_group.device_group)
-        mask = expert_idx_buffer_gather != global_num_experts
-        local_expert_idx = expert_idx_buffer_gather[mask] - ep_group.rank * (global_num_experts // ep_group.world_size)
-        hidden_states = hidden_states_buffer_gather[mask]
-        idx_type = local_expert_idx.dtype
-        sorted_local_expert_idx, sorted_idx = torch.sort(local_expert_idx.float())
-        sorted_local_expert_idx = sorted_local_expert_idx.to(idx_type)
+        scatter_size_list = scatter_sizes.cpu().tolist()
+        gather_size_list = gather_sizes.cpu().tolist()
+
+        expanded_expert_idx = expanded_expert_idx % local_num_experts
+        hidden_states = ep_group.all_to_all(hidden_states, 0, 0,
+                                            scatter_size_list,
+                                            gather_size_list)
+        local_expert_idx = ep_group.all_to_all(expanded_expert_idx, 0, 0,
+                                               scatter_size_list,
+                                               gather_size_list)
+
+        sorted_local_expert_idx, sorted_idx = torch.sort(local_expert_idx)
+
         expert_tokens = torch_npu.npu_moe_compute_expert_tokens(
             sorted_local_expert_idx, local_num_experts).to(torch.int64)
 
@@ -353,7 +269,7 @@ def fused_experts_with_all2all(
                                row_idx_len,
                                dtype=torch.int32,
                                device=topk_weights.device).view(
-            top_k, -1).permute(1, 0).contiguous()
+                                   top_k, -1).permute(1, 0).contiguous()
         hidden_states, expanded_row_idx, expanded_expert_idx = torch_npu.npu_moe_init_routing(
             hidden_states,
             row_idx=row_idx,
@@ -365,10 +281,8 @@ def fused_experts_with_all2all(
         expert_tokens = expert_tokens.to(torch.int64)
         group_list_type = 0
 
-    hidden_states_wrapper = [hidden_states]
-    del hidden_states
-
-    hidden_states = apply_mlp(hidden_states_wrapper,
+    # `hidden_states` will be disposed in the `apply_mlp` function
+    hidden_states = apply_mlp(hidden_states,
                               w1,
                               w1_scale,
                               w2,
@@ -377,33 +291,12 @@ def fused_experts_with_all2all(
                               group_list_type=group_list_type)
 
     if expert_map is not None:
-        idx_type = sorted_idx.dtype
-        resorted_idx = torch.argsort(sorted_idx.float()).to(idx_type)
+        resorted_idx = torch.argsort(sorted_idx)
         hidden_states = hidden_states[resorted_idx]
-        hidden_states_scatter = torch.zeros(
-            (mask.shape[0], hidden_states.shape[1]),
-            dtype=hidden_states.dtype,
-            device=hidden_states.device
-        )
-        hidden_states_scatter[mask] = hidden_states
-        hidden_states_gatter = torch.empty_like(
-            hidden_states_scatter,
-            dtype=hidden_states_scatter.dtype,
-            device=hidden_states_scatter.device
-        )
-        dist.all_to_all_single(hidden_states_gatter,
-                               hidden_states_scatter,
-                               group=ep_group.device_group)
-        hidden_states_gatter = hidden_states_gatter[expert_idx_buffer_scatter != global_num_experts]
-        if hidden_states_gatter.shape[0] != row_idx_len:
-            hidden_states = torch.zeros(
-                (row_idx_len, hidden_states.shape[1]),
-                dtype=hidden_states.dtype,
-                device=hidden_states.device
-            )
-            hidden_states[unpad_indices != -1] = hidden_states_gatter
-        else:
-            hidden_states = hidden_states_gatter
+        hidden_states = ep_group.all_to_all(hidden_states, 0, 0,
+                                            gather_size_list,
+                                            scatter_size_list)
+
         final_hidden_states = torch_npu.npu_moe_finalize_routing(
             hidden_states,
             skip1=None,
@@ -453,7 +346,7 @@ def fused_experts(hidden_states: torch.Tensor,
         token_indices = (torch.arange(num_tokens,
                                       device=device,
                                       dtype=torch.int64).unsqueeze(1).expand(
-            -1, top_k).reshape(-1))
+                                          -1, top_k).reshape(-1))
 
         # Flatten token-to-expert mappings and map to local experts
         weights_flat = topk_weights.view(-1)
@@ -492,7 +385,7 @@ def fused_experts(hidden_states: torch.Tensor,
                                row_idx_len,
                                dtype=torch.int32,
                                device=topk_weights.device).view(
-            top_k, -1).permute(1, 0).contiguous()
+                                   top_k, -1).permute(1, 0).contiguous()
         hidden_states, expanded_row_idx, expanded_expert_idx = torch_npu.npu_moe_init_routing(
             hidden_states,
             row_idx=row_idx,
@@ -504,11 +397,8 @@ def fused_experts(hidden_states: torch.Tensor,
         expert_tokens = expert_tokens.to(torch.int64)
         group_list_type = 0
 
-    # place hidden_states in a list to transfer its ownership into the `apply_mlp` function
-    hidden_states_wrapper = [hidden_states]
-    del hidden_states
-
-    hidden_states = apply_mlp(hidden_states_wrapper,
+    # `hidden_states` will be disposed in the `apply_mlp` function
+    hidden_states = apply_mlp(hidden_states,
                               w1,
                               w1_scale,
                               w2,
@@ -568,8 +458,8 @@ class AscendW8A8DynamicLinearMethod:
 
     @staticmethod
     def get_perchannel_param(
-            output_size: int,
-            params_dtype: torch.dtype,
+        output_size: int,
+        params_dtype: torch.dtype,
     ) -> Dict[str, Any]:
         params_dict = {}
         params_dict["weight_scale"] = torch.empty(output_size,
@@ -582,10 +472,10 @@ class AscendW8A8DynamicLinearMethod:
 
     @staticmethod
     def apply(
-            layer: torch.nn.Module,
-            x: torch.Tensor,
-            bias: Optional[torch.Tensor] = None,
-            tp_rank: Optional[int] = 0,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        bias: Optional[torch.Tensor] = None,
+        tp_rank: Optional[int] = 0,
     ) -> torch.Tensor:
         original_dtype = x.dtype
         # use ATB quantize
@@ -671,27 +561,26 @@ class AscendW8A8DynamicFusedMoEMethod:
         return param_dict
 
     def apply(
-            self,
-            layer: torch.nn.Module,
-            x: torch.Tensor,
-            router_logits: torch.Tensor,
-            top_k: int,
-            renormalize: bool,
-            use_grouped_topk: bool = False,
-            global_num_experts: int = -1,
-            expert_map: Optional[torch.Tensor] = None,
-            topk_group: Optional[int] = None,
-            num_expert_group: Optional[int] = None,
-            custom_routing_function: Optional[Callable] = None,
-            scoring_func: str = "softmax",
-            e_score_correction_bias: Optional[torch.Tensor] = None,
-            is_prefill: bool = True,
-            enable_force_load_balance: bool = True,
-            dp_size: int = 1,
-            **kwargs,
+        self,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        router_logits: torch.Tensor,
+        top_k: int,
+        renormalize: bool,
+        use_grouped_topk: bool = False,
+        global_num_experts: int = -1,
+        expert_map: Optional[torch.Tensor] = None,
+        topk_group: Optional[int] = None,
+        num_expert_group: Optional[int] = None,
+        custom_routing_function: Optional[Callable] = None,
+        scoring_func: str = "softmax",
+        e_score_correction_bias: Optional[torch.Tensor] = None,
+        is_prefill: bool = True,
+        enable_force_load_balance: bool = True,
+        **kwargs,
     ) -> torch.Tensor:
         assert router_logits.shape[
-                   1] == global_num_experts, "Number of global experts mismatch"
+            1] == global_num_experts, "Number of global experts mismatch"
 
         # NOTE: now npu_moe_gating_top_k can only support `group_count=256` pattern
         if global_num_experts == 256:
@@ -740,7 +629,7 @@ class AscendW8A8DynamicFusedMoEMethod:
                 top_k=top_k,
                 expert_map=expert_map,
                 moe_all_to_all_group_name=self.moe_all_to_all_group_name)
-        elif dp_size == 1:
+        elif self.ep_group.world_size == 1:
             return fused_experts(hidden_states=x,
                                  w1=layer.w13_weight,
                                  w1_scale=layer.w13_weight_scale,
@@ -751,6 +640,10 @@ class AscendW8A8DynamicFusedMoEMethod:
                                  top_k=top_k,
                                  expert_map=expert_map)
         else:
+            # The current implementation of deepseek moe splits hidden_states
+            # according to tp_size before they are feed into fused_moe module.
+            # Therefore, all2all is needed no matter how dp/tp is set so as to
+            # dispatch/combine tokens.
             return fused_experts_with_all2all(hidden_states=x,
                                               w1=layer.w13_weight,
                                               w1_scale=layer.w13_weight_scale,
