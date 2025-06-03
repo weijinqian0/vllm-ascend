@@ -28,7 +28,8 @@ from vllm.distributed.parallel_state import get_dp_group
 from vllm.model_executor.layers.fused_moe.layer import (
     FusedMoE, FusedMoEParallelConfig, MoEConfig, UnquantizedFusedMoEMethod,
     determine_expert_map)
-from vllm_ascend.ops.moe_dispatcher.token_dispatcher import MoeDispatcherBuilder
+from vllm_ascend.ops.moe_dispatcher.token_dispatcher import MoeDispatcherBuilder, MoeDispatcherConfig, \
+    MoEAlltoAllSeqOverLapDispatcher
 
 from vllm.model_executor.layers.quantization.base_config import \
     QuantizationConfig
@@ -309,7 +310,6 @@ def fused_experts_with_all2all(
     max_row_per_ep_rank = (-(-global_batch_size // ep_group.world_size) *
                            max_model_len // ep_group.world_size +
                            1) * top_k * 2
-    print(max_row_per_ep_rank)
     expert_idx_buffer_scatter, unpad_indices = process_topk_ids(
         expanded_expert_idx, global_num_experts, ep_group.world_size,
         max_row_per_ep_rank, num_tokens, top_k)
@@ -824,14 +824,6 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                                  top_k=top_k,
                                  expert_map=expert_map)
         else:
-            return fused_experts_with_all2all(hidden_states=x,
-                                              w1=layer.w13_weight,
-                                              w2=layer.w2_weight,
-                                              topk_weights=topk_weights,
-                                              topk_ids=topk_ids,
-                                              top_k=top_k,
-                                              expert_map=expert_map,
-                                              ep_group=self.ep_group)
             return fused_experts_with_all2all(
                 hidden_states=x,
                 w1=layer.w13_weight,
@@ -842,7 +834,7 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                 max_model_len=self.max_model_len,
                 global_batch_size=self.global_batch_size,
                 expert_map=expert_map,
-                ep_group=self.ep_group)
+                ep_group=get_ep_group())
 
 
 class AscendFusedMoE(FusedMoE):
