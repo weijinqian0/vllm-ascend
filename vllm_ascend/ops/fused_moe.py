@@ -966,6 +966,7 @@ class AscendFusedMoE(FusedMoE):
             self.enable_graph_mode = additional_config.get(
                 "enable_graph_mode", False)
 
+        self.token_dispatcher = None
         if ENABLE_MOE_ALLTOALLV and isinstance(self.quant_method, AscendUnquantizedFusedMoEMethod):
             moe_dispatcher_config = (MoeDispatcherConfig()
                                      .set_num_moe_experts(self.global_num_experts)
