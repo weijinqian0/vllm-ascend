@@ -388,15 +388,15 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
             if self.cuda_sync_point == "before_permutation_1":
                 torch.npu.current_stream().synchronize()
             if self.config.is_fused:
-                permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
-                    hidden_states,
-                    routing_map,
-                    num_out_tokens=self.num_out_tokens,
-                )
-            else:
                 permutated_local_input_tokens, reversed_local_input_permutation_mapping = torch_npu.npu_moe_token_permute(
                     tokens=hidden_states,
                     indices=self.top_indices,
+                    num_out_tokens=self.num_out_tokens,
+                )
+            else:
+                permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
+                    hidden_states,
+                    routing_map,
                     num_out_tokens=self.num_out_tokens,
                 )
             return permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert
