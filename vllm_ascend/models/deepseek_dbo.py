@@ -172,7 +172,7 @@ class CustomDeepseekDBOMoE(nn.Module):
             top_k=config.num_experts_per_tok,
             hidden_size=config.hidden_size,
             intermediate_size=config.moe_intermediate_size,
-            reduce_results=True,
+            reduce_results=False,
             renormalize=config.norm_topk_prob,
             quant_config=quant_config,
             use_grouped_topk=True,
@@ -190,7 +190,7 @@ class CustomDeepseekDBOMoE(nn.Module):
                 intermediate_size=intermediate_size,
                 hidden_act=config.hidden_act,
                 quant_config=quant_config,
-                reduce_results=True,
+                reduce_results=True if not envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ else False,
                 prefix=f"{prefix}.shared_experts",
             )
         CustomDeepseekDBOMoE.top_k = config.num_experts_per_tok
