@@ -1144,8 +1144,7 @@ class AscendFusedMoE(FusedMoE):
         self.tp_group = get_tp_group().device_group
         self.quant_method.create_weights(layer=self, **moe_quant_params)
         self.token_dispatcher = None
-        fused_moe_state = get_forward_context().fused_moe_state
-        if fused_moe_state == FusedMoEState.All2AllSeq and isinstance(
+        if envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ and isinstance(
                 self.quant_method, AscendUnquantizedFusedMoEMethod):
             self.reduce_results = False
             moe_dispatcher_config = (
