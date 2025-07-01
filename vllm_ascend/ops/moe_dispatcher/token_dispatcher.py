@@ -190,7 +190,7 @@ class MoEAlltoAllSeqOverLapDispatcher(MoEDispatcher):
         for i in range(len(self.local_expert_indices) - 1):
             assert (
                     self.local_expert_indices[i] == self.local_expert_indices[i + 1] - 1
-            ), "local_expert_indices must be continous"
+            ), "local_expert_indices must be continuous"
         self.probs = None
         self.input_splits = None
         self.output_splits = None
