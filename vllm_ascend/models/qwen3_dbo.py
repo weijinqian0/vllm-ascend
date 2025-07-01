@@ -401,6 +401,7 @@ class CustomQwen3DBOMoEModel(Qwen3MoeModel):
             positions: torch.Tensor,
             intermediate_tensors: Optional[IntermediateTensors] = None,
             inputs_embeds: Optional[torch.Tensor] = None,
+            graph_enable: Optional[bool] = True
     ) -> Union[torch.Tensor, IntermediateTensors]:
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
@@ -516,5 +517,17 @@ class CustomQwen3MoeForCausalLMDBO(Qwen3MoeForCausalLM):
         self.logits_processor = LogitsProcessor(config.vocab_size)
         self.make_empty_intermediate_tensors = (
             self.model.make_empty_intermediate_tensors)
+
+    def forward(
+            self,
+            input_ids: torch.Tensor,
+            positions: torch.Tensor,
+            intermediate_tensors: Optional[IntermediateTensors] = None,
+            inputs_embeds: Optional[torch.Tensor] = None,
+            graph_enable: Optional[bool] = True
+    ) -> Union[torch.Tensor, IntermediateTensors]:
+        hidden_states = self.model(input_ids, positions, intermediate_tensors,
+                                   inputs_embeds, graph_enable)
+        return hidden_states
 
 
