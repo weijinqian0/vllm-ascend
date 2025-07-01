@@ -1,30 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-# Copyright (c) 2025 Huawei Technologies Co., Ltd. All Rights Reserved.
-# Copyright 2023 The vLLM team.
-# Copyright 2023 DeepSeek-AI and the HuggingFace Inc. team. All rights reserved.
-#
-# This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
-# and OPT implementations in this library. It has been modified from its
-# original forms to accommodate minor architectural differences compared
-# to GPT-NeoX and OPT used by the Meta AI team that trained the model.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# # Adapted from
-# # vllm-project/vllm/blob/main/vllm/model_executor/models/deepseek_v2.py
-# # https://github.com/huggingface/transformers/blob/v4.28.0/src/transformers/models/llama/modeling_llama.py
-# # vllm-project/vllm/vllm/model_executor/models/deepseek_v2.py
-# """Inference-only DeepseekV2/DeepseekV3 model."""
-
 from collections.abc import Iterable
 from typing import Any, Optional, Union, List
 from types import SimpleNamespace
@@ -42,9 +15,12 @@ from vllm.forward_context import get_forward_context, set_forward_context
 from vllm.distributed import tensor_model_parallel_all_reduce, get_tensor_model_parallel_world_size, get_tp_group, \
     get_pp_group
 from vllm.model_executor.layers.vocab_parallel_embedding import VocabParallelEmbedding
-from vllm.model_executor.models.utils import (make_empty_intermediate_tensors_factory, make_layers)
+from vllm.model_executor.models.utils import (make_empty_intermediate_tensors_factory, make_layers, maybe_prefix)
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.sequence import IntermediateTensors
+from vllm.model_executor.models.qwen3_moe import Qwen3MoeForCausalLM
+from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
+from vllm.model_executor.layers.logits_processor import LogitsProcessor
 
 from vllm_ascend.multistream.context import (
     advance_step_multistream_layer_context, get_multistream_comm_context,
@@ -507,5 +483,38 @@ class CustomQwen3DBOMoEModel(Qwen3MoeModel):
         [hidden_states,
          residual] = self.ms_post_layer([hidden_states, residual], )
         return hidden_states, residual
+
+
+class CustomQwen3MoeForCausalLMDBO(Qwen3MoeForCausalLM):
+    packed_modules_mapping = {
+        "qkv_proj": [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+        ],
+        "gate_up_proj": [
+            "gate_proj",
+            "up_proj",
+        ],
+        "experts":
+            ["experts.0.gate_proj", "experts.0.up_proj", "experts.0.down_proj"],
+    }
+
+    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+        nn.Module.__init__(self)
+        config = vllm_config.model_config.hf_config
+        quant_config = vllm_config.quant_config
+        self.config = config
+        self.quant_config = quant_config
+        self.model = CustomQwen3DBOMoEModel(vllm_config=vllm_config,
+                                            prefix=maybe_prefix(prefix, "model"))
+        self.lm_head = ParallelLMHead(config.vocab_size,
+                                      config.hidden_size,
+                                      quant_config=quant_config)
+        if self.config.tie_word_embeddings:
+            self.lm_head.weight = self.model.embed_tokens.weight
+        self.logits_processor = LogitsProcessor(config.vocab_size)
+        self.make_empty_intermediate_tensors = (
+            self.model.make_empty_intermediate_tensors)
 
 
