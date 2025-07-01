@@ -133,7 +133,7 @@ def test_models_topk() -> None:
         vllm_model.generate(example_prompts, sampling_params)
 
 
-@patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_MOE_ALL2ALLV": "1", "VLLM_ASCEND_ENABLE_DBO": "1"})
+@patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ": "1", "VLLM_ASCEND_ENABLE_DBO": "1"})
 def test_models_topk() -> None:
     example_prompts = [
         "Hello, my name is",

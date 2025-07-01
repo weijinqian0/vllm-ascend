@@ -37,7 +37,6 @@ from vllm_ascend.distributed.tensor_parallel import gather_from_sequence_paralle
 import vllm_ascend.envs as envs_ascend
 
 VLLM_ASCEND_ENABLE_DBO: bool = envs_ascend.VLLM_ASCEND_ENABLE_DBO
-VLLM_ASCEND_ENABLE_MOE_ALL2ALLV: bool = envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALLV
 
 
 class Qwen3MoeDecoderLayerDBO(Qwen3MoeDecoderLayer):

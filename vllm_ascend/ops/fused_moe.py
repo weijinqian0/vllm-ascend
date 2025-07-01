@@ -47,8 +47,6 @@ from vllm_ascend.ops.moe_dispatcher.token_dispatcher import (
     MoEAlltoAllSeqOverLapDispatcher, MoeDispatcherConfig)
 
 VLLM_ASCEND_MOE_ALL2ALL_BUFFER: bool = envs_ascend.VLLM_ASCEND_MOE_ALL2ALL_BUFFER
-VLLM_ASCEND_ENABLE_MOE_ALL2ALLV: bool = envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALLV
-VLLM_ASCEND_ENABLE_DBO: bool = envs_ascend.VLLM_ASCEND_ENABLE_DBO
 
 
 def process_topk_ids(topk_ids: torch.Tensor, expert_num: int, ep_size: int,
@@ -1147,7 +1145,7 @@ class AscendFusedMoE(FusedMoE):
         self.tp_group = get_tp_group().device_group
         self.quant_method.create_weights(layer=self, **moe_quant_params)
         self.token_dispatcher = None
-        if VLLM_ASCEND_ENABLE_MOE_ALL2ALLV and isinstance(
+        if envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ and isinstance(
                 self.quant_method, AscendUnquantizedFusedMoEMethod):
             moe_dispatcher_config = (
                 MoeDispatcherConfig().set_num_moe_experts(self.global_num_experts)
@@ -1158,7 +1156,7 @@ class AscendFusedMoE(FusedMoE):
                     .set_expert_bias(e_score_correction_bias)
                     .set_scaling_factor(1.0).build())
             self.token_dispatcher = MoEAlltoAllSeqOverLapDispatcher(moe_dispatcher_config)
-            if VLLM_ASCEND_ENABLE_DBO:
+            if envs_ascend.VLLM_ASCEND_ENABLE_DBO:
                 token_dispatcher1 = MoEAlltoAllSeqOverLapDispatcher(moe_dispatcher_config)
                 self.token_dispatchers = [self.token_dispatcher, token_dispatcher1]
 

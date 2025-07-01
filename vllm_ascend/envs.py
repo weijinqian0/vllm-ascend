@@ -137,11 +137,11 @@ env_variables: Dict[str, Callable[[], Any]] = {
     # and the mla_pa will be the default path of deepseek decode path.
     "VLLM_ASCEND_MLA_PA":
     lambda: int(os.getenv("VLLM_ASCEND_MLA_PA", 0)),
-    # VLLM_ASCEND_ENABLE_MOE_ALL2ALLV:
+    # VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ:
     #   0: default, normal init.
-    #   1: enable moe all2allv.
-    "VLLM_ASCEND_ENABLE_MOE_ALL2ALLV":
-    lambda: bool(int(os.getenv('VLLM_ASCEND_ENABLE_MOE_ALL2ALLV', '0'))),
+    #   1: enable moe all2all seq.
+    "VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ":
+    lambda: bool(int(os.getenv('VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ', '0'))),
 }
 
 # end-env-vars-definition

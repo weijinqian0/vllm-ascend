@@ -82,7 +82,6 @@ from vllm_ascend.quantization.w8a8_dynamic import AscendW8A8DynamicLinearMethod
 from vllm_ascend.utils import dispose_tensor
 
 VLLM_ASCEND_ENABLE_DBO: bool = envs_ascend.VLLM_ASCEND_ENABLE_DBO
-VLLM_ASCEND_ENABLE_MOE_ALL2ALLV: bool = envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALLV
 
 
 class CustomDeepseekDBOMLP(CustomDeepseekV2MLP):
@@ -172,7 +171,7 @@ class CustomDeepseekDBOMoE(nn.Module):
             top_k=config.num_experts_per_tok,
             hidden_size=config.hidden_size,
             intermediate_size=config.moe_intermediate_size,
-            reduce_results=True if not VLLM_ASCEND_ENABLE_MOE_ALL2ALLV else False,
+            reduce_results=True if not envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ else False,
             renormalize=config.norm_topk_prob,
             quant_config=quant_config,
             use_grouped_topk=True,
@@ -1168,7 +1167,7 @@ class CustomDeepseekDBOModel(nn.Module):
         for i in range(moe_start_layer, self.end_layer):
             layer = self.layers[i]
             ms_layer_forward_func = layer._forward_ms_layer
-            if VLLM_ASCEND_ENABLE_MOE_ALL2ALLV:
+            if envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ:
                 # ms_layer_forward_func = layer._forward_ms_layer_alltoallv
                 ms_layer_forward_func = layer._forward_ms_layer_alltoallv_finegrained
             # print("get_called......")
