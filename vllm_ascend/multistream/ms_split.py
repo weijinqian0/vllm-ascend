@@ -247,7 +247,7 @@ def model_input_split_v1_mla_attn(
     return [attention_metadata_pre, attention_metadata_post]
 
 
- def model_input_split_v1_attn(
+def model_input_split_v1_attn(
      attn_metadata: AscendMetadata,
      _metadata_cls,
      ms_split_config: MSAttentionMetadataSplitConfig,
