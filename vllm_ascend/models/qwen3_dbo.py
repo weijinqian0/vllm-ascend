@@ -6,6 +6,7 @@ import torch
 import torch_npu
 from torch import nn
 from transformers import PretrainedConfig
+from vllm.compilation.decorators import support_torch_compile
 
 from vllm.model_executor.models.qwen3_moe import Qwen3MoeDecoderLayer, Qwen3MoeModel
 from vllm.config import CacheConfig, VllmConfig
@@ -352,6 +353,7 @@ class Qwen3MoeDecoderLayerDBO(Qwen3MoeDecoderLayer):
         return hidden_states, residual
 
 
+@support_torch_compile
 class CustomQwen3DBOMoEModel(Qwen3MoeModel):
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         nn.Module.__init__(self)
