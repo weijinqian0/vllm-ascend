@@ -565,10 +565,8 @@ def fused_experts_with_all2allv(token_dispatcher, probs, routing_map, hidden_sta
     (share_experts_output, dispatched_input, tokens_per_expert) = token_dispatcher.token_permutation(
         hidden_states, probs, routing_map
     )
-    hidden_states_wrapper = [dispatched_input]
-    del dispatched_input
 
-    expert_output = apply_mlp(hidden_states_wrapper,
+    expert_output = apply_mlp(hidden_states,
                               w1,
                               w2,
                               tokens_per_expert)
