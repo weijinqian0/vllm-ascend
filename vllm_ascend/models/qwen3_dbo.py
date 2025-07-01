@@ -401,7 +401,6 @@ class CustomQwen3DBOMoEModel(Qwen3MoeModel):
             positions: torch.Tensor,
             intermediate_tensors: Optional[IntermediateTensors] = None,
             inputs_embeds: Optional[torch.Tensor] = None,
-            graph_enable: Optional[bool] = True
     ) -> Union[torch.Tensor, IntermediateTensors]:
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
@@ -527,7 +526,7 @@ class CustomQwen3MoeForCausalLMDBO(Qwen3MoeForCausalLM):
             graph_enable: Optional[bool] = True
     ) -> Union[torch.Tensor, IntermediateTensors]:
         hidden_states = self.model(input_ids, positions, intermediate_tensors,
-                                   inputs_embeds, graph_enable)
+                                   inputs_embeds)
         return hidden_states
 
 
