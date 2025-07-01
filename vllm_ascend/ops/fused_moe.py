@@ -958,7 +958,6 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             topk_ids = torch.randint_like(topk_ids, 0, global_num_experts)
 
         fused_moe_state = get_forward_context().fused_moe_state
-        use_alltoallv = 'token_dispatcher' in kwargs and kwargs.get('token_dispatcher') is not None
 
         if fused_moe_state == FusedMoEState.MC2:
             return fused_experts_with_mc2(
@@ -992,7 +991,7 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                 global_batch_size=self.global_batch_size,
                 expert_map=expert_map,
                 ep_group=get_ep_group())
-        elif use_alltoallv and is_prefill:
+        elif fused_moe_state == FusedMoEState.All2AllSeq is not None and is_prefill:
             token_dispatcher = kwargs.get('token_dispatcher')
             return fused_experts_with_all2allv(token_dispatcher=token_dispatcher,
                                                probs=topk_weights,
@@ -1145,8 +1144,10 @@ class AscendFusedMoE(FusedMoE):
         self.tp_group = get_tp_group().device_group
         self.quant_method.create_weights(layer=self, **moe_quant_params)
         self.token_dispatcher = None
-        if envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ and isinstance(
+        fused_moe_state = get_forward_context().fused_moe_state
+        if fused_moe_state == FusedMoEState.All2AllSeq and isinstance(
                 self.quant_method, AscendUnquantizedFusedMoEMethod):
+            self.reduce_results = False
             moe_dispatcher_config = (
                 MoeDispatcherConfig().set_num_moe_experts(self.global_num_experts)
                     .set_num_local_experts(self.local_num_experts)

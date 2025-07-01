@@ -66,6 +66,7 @@ from vllm.sequence import IntermediateTensors
 
 import vllm_ascend.envs as envs_ascend
 from vllm_ascend.ascend_config import get_ascend_config
+from vllm_ascend.ascend_forward_context import FusedMoEState
 from vllm_ascend.distributed.tensor_parallel import gather_from_sequence_parallel_region
 from vllm_ascend.models.deepseek_v2 import CustomDeepseekV2MLP
 from vllm_ascend.multistream.base import MSEventKey
@@ -171,7 +172,7 @@ class CustomDeepseekDBOMoE(nn.Module):
             top_k=config.num_experts_per_tok,
             hidden_size=config.hidden_size,
             intermediate_size=config.moe_intermediate_size,
-            reduce_results=True if not envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ else False,
+            reduce_results=True,
             renormalize=config.norm_topk_prob,
             quant_config=quant_config,
             use_grouped_topk=True,
@@ -1160,6 +1161,7 @@ class CustomDeepseekDBOModel(nn.Module):
         if moe_start_layer == self.end_layer:
             return hidden_states, residual
 
+        fused_moe_state = get_forward_context().fused_moe_state
         attn_metadata, [positions, hidden_states,
                         residual] = self.ms_pre_layer(
                             [positions, hidden_states, residual], )
@@ -1167,7 +1169,7 @@ class CustomDeepseekDBOModel(nn.Module):
         for i in range(moe_start_layer, self.end_layer):
             layer = self.layers[i]
             ms_layer_forward_func = layer._forward_ms_layer
-            if envs_ascend.VLLM_ASCEND_ENABLE_MOE_ALL2ALL_SEQ:
+            if fused_moe_state == FusedMoEState.All2AllSeq:
                 # ms_layer_forward_func = layer._forward_ms_layer_alltoallv
                 ms_layer_forward_func = layer._forward_ms_layer_alltoallv_finegrained
             # print("get_called......")
