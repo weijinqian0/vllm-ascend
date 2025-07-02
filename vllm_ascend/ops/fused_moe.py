@@ -566,7 +566,7 @@ def fused_experts_with_all2allv(token_dispatcher, probs, routing_map, hidden_sta
         hidden_states, probs, routing_map
     )
 
-    expert_output = apply_mlp(hidden_states,
+    expert_output = apply_mlp(dispatched_input,
                               w1,
                               w2,
                               tokens_per_expert)
