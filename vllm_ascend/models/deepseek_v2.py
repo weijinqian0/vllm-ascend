@@ -310,7 +310,10 @@ class CustomDeepseekV2MoE(nn.Module):
             is_prefill = False
 
         # router_logits: (num_tokens, n_experts)
-        router_logits, _ = self.gate(hidden_states)
+        if self.enable_multistream_moe:
+            router_logits = None
+        else:
+            router_logits, _ = self.gate(hidden_states)
 
         experts_hidden_states = self.experts(
             hidden_states=hidden_states,
@@ -319,6 +322,7 @@ class CustomDeepseekV2MoE(nn.Module):
             top_k=CustomDeepseekV2MoE.top_k,
             enable_force_load_balance=enable_force_load_balance,
             shared_experts=self.shared_experts,
+            gate=self.gate if self.enable_multistream_moe else None,
         )
 
         hidden_states = (
@@ -478,7 +482,8 @@ class CustomDeepseekV2MLAAttention(DeepseekV2MLAAttention):
                 hidden_states_or_q_c = self.q_a_layernorm(ckq)
         else:
             hidden_states_or_q_c = hidden_states
-        if self.torchair_graph_enabled:
+        is_mtp_model = attn_metadata is not None and attn_metadata.is_mtp_model
+        if self.torchair_graph_enabled and not is_mtp_model:
             forward_kwargs = {}
             if envs.VLLM_USE_V1:
                 output_shape = hidden_states.shape
@@ -734,7 +739,9 @@ class CustomDeepseekV2ForCausalLM(DeepseekV2ForCausalLM):
         if get_pp_group().is_last_rank:
             self.lm_head = ParallelLMHead(config.vocab_size,
                                           config.hidden_size,
-                                          quant_config=quant_config)
+                                          quant_config=quant_config,
+                                          prefix=maybe_prefix(
+                                              prefix, "lm_head"))
         else:
             self.lm_head = PPMissingLayer()
         self.logits_processor = LogitsProcessor(config.vocab_size)

@@ -216,7 +216,7 @@ def fused_experts_with_mc2(
         "expert_shard_type": 0,
         "shared_expert_rank_num": 0,
         "moe_expert_num": moe_expert_num,
-        "global_bs": 0,
+        "global_bs": global_bs,
     }
     tp_recv_counts = output[5]
     stage3_kwargs = {
@@ -1164,7 +1164,8 @@ class AscendFusedMoE(FusedMoE):
                 is_prefill: bool,
                 enable_force_load_balance: bool = False,
                 top_k: Optional[int] = None,
-                shared_experts: Optional[Any] = None):
+                shared_experts: Optional[Any] = None,
+                gate: Optional[Any] = None):
         assert self.quant_method is not None
 
         if top_k:
@@ -1175,6 +1176,20 @@ class AscendFusedMoE(FusedMoE):
         num_tokens, hidden_size = hidden_states.shape
 
         fused_moe_state = get_forward_context().fused_moe_state
+        # For w8a8 dynamic we can do npu_dynamic_quant and gate in parallel.
+        quantized_x_for_share, dynamic_scale_for_share = None, None
+        from vllm_ascend.quantization.w8a8_dynamic import \
+            AscendW8A8DynamicFusedMoEMethod
+        if self.enable_multistream_moe:
+            assert gate is not None
+            router_logits, _ = gate(hidden_states)
+            if isinstance(self.quant_method.quant_method,
+                          AscendW8A8DynamicFusedMoEMethod
+                          ) and fused_moe_state == FusedMoEState.MC2:
+                with npu_stream_switch("moe_secondary", 0):
+                    quantized_x_for_share, dynamic_scale_for_share = torch_npu.npu_dynamic_quant(
+                        hidden_states)
+
         if shared_experts:
             if not self.enable_multistream_moe or fused_moe_state != FusedMoEState.MC2:
                 shared_hidden_states = shared_experts(hidden_states)
@@ -1231,6 +1246,8 @@ class AscendFusedMoE(FusedMoE):
             global_redundant_expert_num=self.global_redundant_expert_num,
             shared_experts=shared_experts if self.torchair_graph_enabled
             and self.enable_multistream_moe and not is_prefill else None,
+            quantized_x_for_share=quantized_x_for_share,
+            dynamic_scale_for_share=dynamic_scale_for_share,
             token_dispatcher=self.token_dispatcher
         )
 
