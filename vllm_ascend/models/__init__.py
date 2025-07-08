@@ -11,6 +11,7 @@ def register_model():
     from .qwen2_5_vl import \
         AscendQwen2_5_VLForConditionalGeneration  # noqa: F401
     from .qwen2_vl import AscendQwen2VLForConditionalGeneration  # noqa: F401
+    from .moe_block import AscendSparseMoeBlock
 
     ModelRegistry.register_model(
         "DeepSeekMTPModel",
