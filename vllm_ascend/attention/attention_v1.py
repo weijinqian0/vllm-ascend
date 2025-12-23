@@ -29,7 +29,7 @@ from vllm.attention.backends.registry import (AttentionBackendEnum,
 from vllm.config import VllmConfig, get_current_vllm_config
 from vllm.forward_context import ForwardContext, get_forward_context
 from vllm.utils.math_utils import cdiv
-from vllm.v1.attention.backends.utils import AttentionCGSupport, AttentionMetadataBuilder
+from vllm.v1.attention.backends.utils import AttentionCGSupport
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import AttentionSpec
 
