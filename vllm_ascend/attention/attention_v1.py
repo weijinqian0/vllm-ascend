@@ -29,7 +29,7 @@ from vllm.attention.backends.registry import (AttentionBackendEnum,
 from vllm.config import VllmConfig, get_current_vllm_config
 from vllm.forward_context import ForwardContext, get_forward_context
 from vllm.utils.math_utils import cdiv
-from vllm.v1.attention.backends.utils import AttentionCGSupport
+from vllm.v1.attention.backends.utils import AttentionCGSupport, AttentionMetadataBuilder
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import AttentionSpec
 
@@ -171,7 +171,7 @@ class AscendMetadata:
     model_runner_type: str = ""
 
 
-class AscendAttentionMetadataBuilder:
+class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
     # Does this backend/builder support ACL Graphs for attention (default: no).
     aclgraph_support: ClassVar[AttentionCGSupport] = \
         AttentionCGSupport.ALWAYS
@@ -215,11 +215,11 @@ class AscendAttentionMetadataBuilder:
         return False
 
     def build(
-        self,
-        common_prefix_len: int,
-        common_attn_metadata: AscendCommonAttentionMetadata,
-        model: Optional[nn.Module] = None,
-    ):
+            self,
+            common_prefix_len: int,
+            common_attn_metadata: AscendCommonAttentionMetadata,
+            fast_build: bool = False,
+    ) -> AscendMetadata:
         num_reqs = common_attn_metadata.num_reqs
         num_actual_tokens = common_attn_metadata.num_actual_tokens
         query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu[:

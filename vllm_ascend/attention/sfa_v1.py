@@ -192,19 +192,18 @@ class AscendSFAMetadataBuilder:
         cum_query_lens = common_attn_metadata.query_start_loc[1:num_reqs + 1]
         seq_lens = common_attn_metadata.seq_lens[:num_reqs]
 
-        cos, sin = get_cos_and_sin_mla()
-
         assert self.cos_cache is not None and self.sin_cache is not None
-        new_cos = self.cos_cache[input_positions][:, None, None]
-        new_sin = self.sin_cache[input_positions][:, None, None]
+        # new_cos = self.cos_cache[input_positions][:, None, None]
+        # new_sin = self.sin_cache[input_positions][:, None, None]
 
-        if (cos is not None and sin is not None
-                and num_input_tokens <= cos.shape[0]
-                and num_input_tokens <= sin.shape[0]):
-            cos[:num_input_tokens] = new_cos
-            sin[:num_input_tokens] = new_sin
-        else:
-            cos, sin = new_cos, new_sin
+        cos, sin = get_cos_and_sin_mla(input_positions)
+        # if (cos is not None and sin is not None
+        #         and num_input_tokens <= cos.shape[0]
+        #         and num_input_tokens <= sin.shape[0]):
+        #     cos[:num_input_tokens] = new_cos
+        #     sin[:num_input_tokens] = new_sin
+        # else:
+        #     cos, sin = new_cos, new_sin
 
         sfa_cp_context = None
         if self.enable_sfa_cp:

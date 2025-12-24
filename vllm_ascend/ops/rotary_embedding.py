@@ -42,6 +42,8 @@ from vllm_ascend.utils import (AscendDeviceType, enable_custom_op,
 # by different approaches.
 _cos_mla: Optional[torch.Tensor] = None
 _sin_mla: Optional[torch.Tensor] = None
+_cos_cache: Optional[torch.Tensor] = None
+_sin_cache: Optional[torch.Tensor] = None
 _cos_sin_cache: Optional[torch.Tensor] = None
 _cos: Optional[torch.Tensor] = None
 _sin: Optional[torch.Tensor] = None
@@ -101,8 +103,15 @@ def set_cos_and_sin(vllm_config, max_num_reqs, decode_token_per_req, dtype,
                            device=device)
 
 
-def get_cos_and_sin_mla():
-    return _cos_mla, _sin_mla
+def get_cos_and_sin_mla(positions):
+    global _cos_cache
+    global _sin_cache
+    global _cos_mla
+    global _sin_mla
+    num_tokens = positions.size(0)
+    _cos_mla[:num_tokens, ...] = _cos_cache[positions].unsqueeze(1).unsqueeze(2)
+    _sin_mla[:num_tokens, ...] = _sin_cache[positions].unsqueeze(1).unsqueeze(2)
+    return _cos_mla[:num_tokens, ...], _sin_mla[:num_tokens, ...]
 
 
 def _record_cos_sin_cache(cos_sin_cache):
@@ -110,6 +119,13 @@ def _record_cos_sin_cache(cos_sin_cache):
     if _cos_sin_cache is not None:
         return
     _cos_sin_cache = cos_sin_cache
+
+
+def _record_cos_and_sin_cache(cos_cache, sin_cache):
+    global _cos_cache
+    global _sin_cache
+    _cos_cache = cos_cache
+    _sin_cache = sin_cache
 
 
 def update_cos_sin(positions):
@@ -469,6 +485,8 @@ class AscendDeepseekScalingRotaryEmbedding(DeepseekScalingRotaryEmbedding):
         self.register_buffer("cos_sin_cache", cache, persistent=False)
         self.register_buffer("cos_cached", cos_cached, persistent=False)
         self.register_buffer("sin_cached", sin_cached, persistent=False)
+        _record_cos_sin_cache(cache)
+        _record_cos_and_sin_cache(cos_cached, sin_cached)
 
     def forward(self,
                 positions: torch.Tensor,

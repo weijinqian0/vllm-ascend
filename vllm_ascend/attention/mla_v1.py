@@ -400,16 +400,17 @@ class AscendMLAMetadataBuilder:
         self.slot_mapping = common_attn_metadata.slot_mapping[:self.
                                                               num_actual_tokens]
 
-        if self.cos_cache is None:
-            self.cos_cache = model.model.layers[
-                model.model.start_layer].self_attn.rotary_emb.cos_cached
-            self.sin_cache = model.model.layers[
-                model.model.start_layer].self_attn.rotary_emb.sin_cached
-        if self.cos_cache.dtype != self.model_config.dtype:  # type: ignore
-            self.cos_cache = self.cos_cache.to(  # type: ignore
-                self.model_config.dtype)  # type: ignore
-            self.sin_cache = self.sin_cache.to(  # type: ignore
-                self.model_config.dtype)  # type: ignore
+        # if self.cos_cache is None:
+        #     self.cos_cache = model.model.layers[
+        #         model.model.start_layer].self_attn.rotary_emb.cos_cached
+        #     self.sin_cache = model.model.layers[
+        #         model.model.start_layer].self_attn.rotary_emb.sin_cached
+        # if self.cos_cache.dtype != self.model_config.dtype:  # type: ignore
+        #     self.cos_cache = self.cos_cache.to(  # type: ignore
+        #         self.model_config.dtype)  # type: ignore
+        #     self.sin_cache = self.sin_cache.to(  # type: ignore
+        #         self.model_config.dtype)  # type: ignore
+
 
         query_seq_lens_cpu = query_start_loc_cpu[1:] - query_start_loc_cpu[:-1]
         self.query_lens = query_seq_lens_cpu[:num_reqs]
@@ -539,12 +540,13 @@ class AscendMLAMetadataBuilder:
             reqs_start:] - query_start_loc[reqs_start]
 
         prefill_input_positions = input_positions[tokens_start:]
-        cos = self.cos_cache[
-            prefill_input_positions].unsqueeze(  # type: ignore
-                1).unsqueeze(2)
-        sin = self.sin_cache[
-            prefill_input_positions].unsqueeze(  # type: ignore
-                1).unsqueeze(2)
+        cos, sin = get_cos_and_sin_mla(prefill_input_positions)
+        # cos = self.cos_cache[
+        #     prefill_input_positions].unsqueeze(  # type: ignore
+        #         1).unsqueeze(2)
+        # sin = self.sin_cache[
+        #     prefill_input_positions].unsqueeze(  # type: ignore
+        #         1).unsqueeze(2)
         return AscendMLAPrefillMetadata(
             attn_mask=common_attn_metadata.attn_mask,
             query_lens=self.query_lens[reqs_start:].to(torch.int32),
@@ -573,7 +575,6 @@ class AscendMLAMetadataBuilder:
                                                          num_actual_tokens].long(
                                                          )
 
-        cos, sin = get_cos_and_sin_mla()
         # Notice that num_decodes != num_decode_tokens in SpecDecoding Scenario
         actual_seq_lengths_q = query_start_loc_cpu[1:self.num_decodes +
                                                    1].tolist()
@@ -643,44 +644,19 @@ class AscendMLAMetadataBuilder:
         # TODO: After the fullgraph supports MTP, the if branch needs to deleted
         assert self.cos_cache is not None
         assert self.sin_cache is not None
-        if cos is None and sin is None:
-            cos = self.cos_cache[input_positions].unsqueeze(  # type: ignore
-                1).unsqueeze(2)
-            sin = self.sin_cache[input_positions].unsqueeze(  # type: ignore
-                1).unsqueeze(2)
-
-            decode_metadata = AscendMLADecodeMetadata(
-                input_positions=input_positions,
-                block_table=self.block_table,
-                seq_lens=self.seq_lens,
-                seq_lens_list=seq_lens_list,
-                max_seq_lens=max_seq_lens,
-                attn_mask=common_attn_metadata.spec_attn_mask,
-                actual_seq_lengths_q=actual_seq_lengths_q,
-                sin=sin,
-                cos=cos,
-                cp_seq_len=cp_seq_len,
-                batch_seq_mask=batch_seq_mask)
-        else:
-            cos[:self.num_decode_tokens,
-                ...] = self.cos_cache[input_positions].unsqueeze(1).unsqueeze(
-                    2)
-            sin[:self.num_decode_tokens,
-                ...] = self.sin_cache[input_positions].unsqueeze(1).unsqueeze(
-                    2)
-
-            decode_metadata = AscendMLADecodeMetadata(
-                input_positions=input_positions,
-                block_table=self.block_table,
-                seq_lens=self.seq_lens,
-                seq_lens_list=seq_lens_list,
-                max_seq_lens=max_seq_lens,
-                attn_mask=common_attn_metadata.spec_attn_mask,
-                actual_seq_lengths_q=actual_seq_lengths_q,
-                sin=sin[:self.num_decode_tokens, ...],
-                cos=cos[:self.num_decode_tokens, ...],
-                cp_seq_len=cp_seq_len,
-                batch_seq_mask=batch_seq_mask)
+        cos, sin = get_cos_and_sin_mla(input_positions)
+        decode_metadata = AscendMLADecodeMetadata(
+            input_positions=input_positions,
+            block_table=self.block_table,
+            seq_lens=self.seq_lens,
+            seq_lens_list=seq_lens_list,
+            max_seq_lens=max_seq_lens,
+            attn_mask=common_attn_metadata.spec_attn_mask,
+            actual_seq_lengths_q=actual_seq_lengths_q,
+            sin=sin[:self.num_decode_tokens, ...],
+            cos=cos[:self.num_decode_tokens, ...],
+            cp_seq_len=cp_seq_len,
+            batch_seq_mask=batch_seq_mask)
         return decode_metadata
 
     def build_for_graph_capture(
