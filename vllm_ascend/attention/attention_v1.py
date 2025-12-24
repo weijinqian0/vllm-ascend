@@ -146,7 +146,6 @@ class AscendMetadata:
     actual_seq_lengths_q: List[int] = None  # type: ignore
 
     query_start_loc: torch.Tensor = None
-    query_lens: torch.Tensor = None
     # Maximum query length in the batch (None for decoding).
     max_query_len: Optional[int] = None
 
@@ -230,7 +229,6 @@ class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
             split_decodes_and_prefills(common_attn_metadata, decode_threshold=self.decode_threshold)
 
         block_table = common_attn_metadata.block_table_tensor
-        query_lens = query_start_loc_cpu[1:] - query_start_loc_cpu[:-1]
         seq_lens = common_attn_metadata.seq_lens_cpu[:num_reqs]
 
         slot_mapping = common_attn_metadata.slot_mapping[:num_actual_tokens]
@@ -246,7 +244,6 @@ class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
             num_decode_tokens=num_decode_tokens,
             block_tables=block_table,
             query_start_loc=query_start_loc,
-            query_lens=query_lens,
             seq_lens=seq_lens,
             seq_lens_list=seq_lens.tolist(),
             max_query_len=common_attn_metadata.max_query_len,
