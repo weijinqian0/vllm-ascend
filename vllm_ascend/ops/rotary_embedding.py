@@ -69,20 +69,19 @@ def set_cos_and_sin(vllm_config, max_num_reqs, decode_token_per_req, dtype,
     max_num_batched_tokens = vllm_config.scheduler_config.max_num_batched_tokens
 
     if model_config.use_mla:
-        if compilation_config.cudagraph_mode == CUDAGraphMode.FULL_DECODE_ONLY:
-            rope_dim = model_config.hf_text_config.qk_rope_head_dim
-            _cos_mla = torch.ones(max_num_reqs * decode_token_per_req,
-                                  1,
-                                  1,
-                                  rope_dim,
-                                  dtype=dtype,
-                                  device=device)
-            _sin_mla = torch.zeros(max_num_reqs * decode_token_per_req,
-                                   1,
-                                   1,
-                                   rope_dim,
-                                   dtype=dtype,
-                                   device=device)
+        rope_dim = model_config.hf_text_config.qk_rope_head_dim
+        _cos_mla = torch.ones(max_num_reqs * decode_token_per_req,
+                              1,
+                              1,
+                              rope_dim,
+                              dtype=dtype,
+                              device=device)
+        _sin_mla = torch.zeros(max_num_reqs * decode_token_per_req,
+                               1,
+                               1,
+                               rope_dim,
+                               dtype=dtype,
+                               device=device)
     elif not is_vl_model(vllm_config) and has_rope(vllm_config):
         rope_dim = model_config.get_head_size()
         # For models using partial rope like Qwen3-Next.

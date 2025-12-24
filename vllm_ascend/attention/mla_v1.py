@@ -641,9 +641,6 @@ class AscendMLAMetadataBuilder:
                     num_reqs_pad_size, num_reqs, actual_seq_lengths_q,
                     common_attn_metadata)
 
-        # TODO: After the fullgraph supports MTP, the if branch needs to deleted
-        assert self.cos_cache is not None
-        assert self.sin_cache is not None
         cos, sin = get_cos_and_sin_mla(input_positions)
         decode_metadata = AscendMLADecodeMetadata(
             input_positions=input_positions,
