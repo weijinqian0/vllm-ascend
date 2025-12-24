@@ -21,7 +21,6 @@ from typing import Optional, Tuple
 import einops
 import torch
 import torch_npu
-from vllm.config import CUDAGraphMode
 from vllm.model_executor.layers.rotary_embedding import (
     DeepseekScalingRotaryEmbedding, MRotaryEmbedding, RotaryEmbedding,
     YaRNScalingRotaryEmbedding)
@@ -107,8 +106,10 @@ def get_cos_and_sin_mla(positions):
     global _cos_mla
     global _sin_mla
     num_tokens = positions.size(0)
-    _cos_mla[:num_tokens, ...] = _cos_cache[positions].unsqueeze(1).unsqueeze(2)
-    _sin_mla[:num_tokens, ...] = _sin_cache[positions].unsqueeze(1).unsqueeze(2)
+    _cos_mla[:num_tokens,
+             ...] = _cos_cache[positions].unsqueeze(1).unsqueeze(2)
+    _sin_mla[:num_tokens,
+             ...] = _sin_cache[positions].unsqueeze(1).unsqueeze(2)
     return _cos_mla[:num_tokens, ...], _sin_mla[:num_tokens, ...]
 
 

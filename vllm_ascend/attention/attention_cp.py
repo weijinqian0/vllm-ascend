@@ -20,7 +20,6 @@ from typing import ClassVar, List, Optional, Tuple
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 import torch_npu
 from vllm.config import VllmConfig
 from vllm.distributed import (get_dcp_group,

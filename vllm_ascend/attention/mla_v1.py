@@ -5,7 +5,6 @@ from typing import (TYPE_CHECKING, ClassVar, NamedTuple, Optional, Tuple, Type,
 import numpy as np
 import torch
 import torch_npu
-from torch import nn
 from vllm.attention.backends.abstract import AttentionBackend, MLAAttentionImpl
 from vllm.attention.backends.utils import PAD_SLOT_ID
 from vllm.config import VllmConfig, get_current_vllm_config
@@ -14,8 +13,8 @@ from vllm.logger import logger
 from vllm.model_executor.layers.linear import UnquantizedLinearMethod
 from vllm.utils.math_utils import cdiv, round_down
 from vllm.v1.attention.backends.mla.common import MLACommonMetadataBuilder
-from vllm.v1.attention.backends.utils import AttentionCGSupport, AttentionMetadataBuilder
-from vllm.v1.kv_cache_interface import MLAAttentionSpec, AttentionSpec
+from vllm.v1.attention.backends.utils import AttentionCGSupport
+from vllm.v1.kv_cache_interface import MLAAttentionSpec
 
 from vllm_ascend import envs
 from vllm_ascend.ascend_config import get_ascend_config
@@ -186,18 +185,18 @@ class AscendMLAMetadataBuilder(MLACommonMetadataBuilder[AscendMLAMetadata]):
     NOTE: Please read the comment at the top of the file before trying to
     understand this class
     """
+
     def __init__(
-            self,
-            kv_cache_spec: MLAAttentionSpec,
-            layer_names: list[str],
-            vllm_config: VllmConfig,
-            device: torch.device,
-            metadata_cls: type[AscendMLAMetadata] | None = None,
-            supports_dcp_with_varlen: bool = False,
+        self,
+        kv_cache_spec: MLAAttentionSpec,
+        layer_names: list[str],
+        vllm_config: VllmConfig,
+        device: torch.device,
+        metadata_cls: type[AscendMLAMetadata] | None = None,
+        supports_dcp_with_varlen: bool = False,
     ):
-        self.metadata_cls = (
-            metadata_cls if metadata_cls is not None else AscendMLAMetadata
-        )
+        self.metadata_cls = (metadata_cls if metadata_cls is not None else
+                             AscendMLAMetadata)
         self.vllm_config = vllm_config
         self.model_config = vllm_config.model_config
         self.device = device
@@ -385,10 +384,10 @@ class AscendMLAMetadataBuilder(MLACommonMetadataBuilder[AscendMLAMetadata]):
         self.num_actual_tokens = common_attn_metadata.num_actual_tokens
 
     def build(
-            self,
-            common_prefix_len: int,
-            common_attn_metadata: AscendCommonAttentionMetadata,
-            fast_build: bool = False,
+        self,
+        common_prefix_len: int,
+        common_attn_metadata: AscendCommonAttentionMetadata,
+        fast_build: bool = False,
     ) -> AscendMLAMetadata:
         num_reqs = common_attn_metadata.num_reqs
         query_start_loc = common_attn_metadata.query_start_loc

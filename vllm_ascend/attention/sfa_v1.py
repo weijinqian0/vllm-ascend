@@ -14,7 +14,6 @@ from vllm.model_executor.layers.linear import (ReplicatedLinear,
 from vllm.triton_utils import HAS_TRITON
 from vllm.v1.attention.backends.mla.common import MLACommonMetadataBuilder
 from vllm.v1.attention.backends.utils import AttentionCGSupport
-from vllm.v1.kv_cache_interface import AttentionSpec
 
 from vllm_ascend import envs
 from vllm_ascend.ascend_config import get_ascend_config
@@ -120,17 +119,16 @@ class AscendSFAMetadataBuilder(MLACommonMetadataBuilder[AscendSFAMetadata]):
 
     # _attn_mask_builder = None
     def __init__(
-            self,
-            kv_cache_spec,
-            layer_names: list[str],
-            vllm_config: VllmConfig,
-            device: torch.device,
-            metadata_cls: type[AscendSFAMetadata] | None = None,
-            supports_dcp_with_varlen: bool = False,
+        self,
+        kv_cache_spec,
+        layer_names: list[str],
+        vllm_config: VllmConfig,
+        device: torch.device,
+        metadata_cls: type[AscendSFAMetadata] | None = None,
+        supports_dcp_with_varlen: bool = False,
     ):
-        self.metadata_cls = (
-            metadata_cls if metadata_cls is not None else AscendSFAMetadata
-        )
+        self.metadata_cls = (metadata_cls if metadata_cls is not None else
+                             AscendSFAMetadata)
         self.vllm_config = vllm_config
         self.model_config = vllm_config.model_config
         self.device = device
