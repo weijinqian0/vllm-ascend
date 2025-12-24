@@ -258,7 +258,7 @@ class XliteWrapper:
             batch = attn_metadata.num_prefills + attn_metadata.num_decodes
             seq_lens = attn_metadata.seq_lens[:batch]
             query_lens = attn_metadata.query_start_loc_cpu[
-                         1:] - attn_metadata.query_start_loc_cpu[:-1]
+                1:] - attn_metadata.query_start_loc_cpu[:-1]
             query_lens = query_lens[:batch]
             cached_lens = seq_lens - query_lens
 
