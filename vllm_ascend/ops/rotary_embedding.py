@@ -64,19 +64,18 @@ def set_cos_and_sin(vllm_config, max_num_reqs, decode_token_per_req, dtype,
         _sin is not None:
         return
 
-    compilation_config = vllm_config.compilation_config
     model_config = vllm_config.model_config
     max_num_batched_tokens = vllm_config.scheduler_config.max_num_batched_tokens
 
     if model_config.use_mla:
         rope_dim = model_config.hf_text_config.qk_rope_head_dim
-        _cos_mla = torch.ones(max_num_reqs * decode_token_per_req,
+        _cos_mla = torch.ones(max_num_batched_tokens,
                               1,
                               1,
                               rope_dim,
                               dtype=dtype,
                               device=device)
-        _sin_mla = torch.zeros(max_num_reqs * decode_token_per_req,
+        _sin_mla = torch.zeros(max_num_batched_tokens,
                                1,
                                1,
                                rope_dim,
