@@ -39,15 +39,15 @@ from vllm_ascend.utils import (AscendDeviceType, enable_custom_op,
 # AscendAttentionBackendImpl for GQA models, we cannot pass cos && sin by
 # attn_metadata. This causes that rope in GQA models must pass cos && sin
 # by different approaches.
-_cos_mla: Optional[torch.Tensor] = None
-_sin_mla: Optional[torch.Tensor] = None
-_cos_cache: Optional[torch.Tensor] = None
-_sin_cache: Optional[torch.Tensor] = None
-_cos_sin_cache: Optional[torch.Tensor] = None
-_cos: Optional[torch.Tensor] = None
-_sin: Optional[torch.Tensor] = None
-_cos_slice: Optional[torch.Tensor] = None
-_sin_slice: Optional[torch.Tensor] = None
+_cos_mla: torch.Tensor = None
+_sin_mla: torch.Tensor = None
+_cos_cache: torch.Tensor = None
+_sin_cache: torch.Tensor = None
+_cos_sin_cache: torch.Tensor = None
+_cos: torch.Tensor = None
+_sin: torch.Tensor = None
+_cos_slice: torch.Tensor = None
+_sin_slice: torch.Tensor = None
 
 
 def set_cos_and_sin(vllm_config, max_num_reqs, decode_token_per_req, dtype,
