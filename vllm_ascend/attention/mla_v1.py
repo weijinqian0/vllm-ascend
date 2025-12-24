@@ -13,8 +13,9 @@ from vllm.forward_context import ForwardContext, get_forward_context
 from vllm.logger import logger
 from vllm.model_executor.layers.linear import UnquantizedLinearMethod
 from vllm.utils.math_utils import cdiv, round_down
-from vllm.v1.attention.backends.utils import AttentionCGSupport
-from vllm.v1.kv_cache_interface import MLAAttentionSpec
+from vllm.v1.attention.backends.mla.common import MLACommonMetadataBuilder
+from vllm.v1.attention.backends.utils import AttentionCGSupport, AttentionMetadataBuilder
+from vllm.v1.kv_cache_interface import MLAAttentionSpec, AttentionSpec
 
 from vllm_ascend import envs
 from vllm_ascend.ascend_config import get_ascend_config
@@ -177,7 +178,7 @@ class AscendMLAMetadata:
 M = TypeVar("M", bound=AscendMLAMetadata)
 
 
-class AscendMLAMetadataBuilder:
+class AscendMLAMetadataBuilder(MLACommonMetadataBuilder[AscendMLAMetadata]):
     # Does this backend/builder support ACL Graphs for attention (default: no).
     aclgraph_support: ClassVar[AttentionCGSupport] = \
         AttentionCGSupport.UNIFORM_BATCH
@@ -185,15 +186,18 @@ class AscendMLAMetadataBuilder:
     NOTE: Please read the comment at the top of the file before trying to
     understand this class
     """
-
-    def __init__(self,
-                 kv_cache_spec: MLAAttentionSpec,
-                 layer_names: list[str],
-                 vllm_config: VllmConfig,
-                 device: torch.device,
-                 metadata_cls: Optional[AscendMLAMetadata] = None):
-        self.metadata_cls: Optional[AscendMLAMetadata] = metadata_cls \
-            if metadata_cls is not None else AscendMLAMetadata  # type: ignore
+    def __init__(
+            self,
+            kv_cache_spec: MLAAttentionSpec,
+            layer_names: list[str],
+            vllm_config: VllmConfig,
+            device: torch.device,
+            metadata_cls: type[AscendMLAMetadata] | None = None,
+            supports_dcp_with_varlen: bool = False,
+    ):
+        self.metadata_cls = (
+            metadata_cls if metadata_cls is not None else AscendMLAMetadata
+        )
         self.vllm_config = vllm_config
         self.model_config = vllm_config.model_config
         self.device = device
@@ -381,10 +385,10 @@ class AscendMLAMetadataBuilder:
         self.num_actual_tokens = common_attn_metadata.num_actual_tokens
 
     def build(
-        self,
-        common_prefix_len: int,
-        common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
+            self,
+            common_prefix_len: int,
+            common_attn_metadata: AscendCommonAttentionMetadata,
+            fast_build: bool = False,
     ) -> AscendMLAMetadata:
         num_reqs = common_attn_metadata.num_reqs
         query_start_loc = common_attn_metadata.query_start_loc
@@ -400,18 +404,6 @@ class AscendMLAMetadataBuilder:
         self.slot_mapping = common_attn_metadata.slot_mapping[:self.
                                                               num_actual_tokens]
 
-        # if self.cos_cache is None:
-        #     self.cos_cache = model.model.layers[
-        #         model.model.start_layer].self_attn.rotary_emb.cos_cached
-        #     self.sin_cache = model.model.layers[
-        #         model.model.start_layer].self_attn.rotary_emb.sin_cached
-        # if self.cos_cache.dtype != self.model_config.dtype:  # type: ignore
-        #     self.cos_cache = self.cos_cache.to(  # type: ignore
-        #         self.model_config.dtype)  # type: ignore
-        #     self.sin_cache = self.sin_cache.to(  # type: ignore
-        #         self.model_config.dtype)  # type: ignore
-
-
         query_seq_lens_cpu = query_start_loc_cpu[1:] - query_start_loc_cpu[:-1]
         self.query_lens = query_seq_lens_cpu[:num_reqs]
         self.seq_lens = common_attn_metadata.seq_lens_cpu[:num_reqs]
@@ -421,12 +413,12 @@ class AscendMLAMetadataBuilder:
         prefill_metadata = None
         if self.num_prefills > 0:
             prefill_metadata = self.build_prefill_metadata(
-                common_prefix_len, common_attn_metadata, model)
+                common_prefix_len, common_attn_metadata)
 
         decode_metadata = None
         if self.num_decodes > 0:
             decode_metadata = self.build_decode_metadata(
-                common_prefix_len, common_attn_metadata, model)
+                common_prefix_len, common_attn_metadata)
 
         return self.metadata_cls(  # type: ignore
             num_actual_tokens_pcp_padded=self.num_actual_tokens,
@@ -451,7 +443,6 @@ class AscendMLAMetadataBuilder:
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
     ):
         if not self.chunked_prefill_enabled:
             return None
@@ -521,7 +512,6 @@ class AscendMLAMetadataBuilder:
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
     ) -> AscendMLAPrefillMetadata:
         query_start_loc = common_attn_metadata.query_start_loc
 
@@ -531,7 +521,7 @@ class AscendMLAMetadataBuilder:
                                                          )
 
         chunked_context_metadata = self.build_chunked_metadata(
-            common_prefix_len, common_attn_metadata, model)
+            common_prefix_len, common_attn_metadata)
         reqs_start = self.num_decodes  # prefill_start
         tokens_start = self.num_decode_tokens
         max_query_len = self.query_lens[reqs_start:].max().item()
@@ -541,12 +531,6 @@ class AscendMLAMetadataBuilder:
 
         prefill_input_positions = input_positions[tokens_start:]
         cos, sin = get_cos_and_sin_mla(prefill_input_positions)
-        # cos = self.cos_cache[
-        #     prefill_input_positions].unsqueeze(  # type: ignore
-        #         1).unsqueeze(2)
-        # sin = self.sin_cache[
-        #     prefill_input_positions].unsqueeze(  # type: ignore
-        #         1).unsqueeze(2)
         return AscendMLAPrefillMetadata(
             attn_mask=common_attn_metadata.attn_mask,
             query_lens=self.query_lens[reqs_start:].to(torch.int32),
@@ -566,7 +550,6 @@ class AscendMLAMetadataBuilder:
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
     ) -> AscendMLADecodeMetadata:
         num_reqs = common_attn_metadata.num_reqs
         query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
@@ -660,7 +643,6 @@ class AscendMLAMetadataBuilder:
         self,
         common_attn_metadata: AscendCommonAttentionMetadata,
         attn_state: AscendAttentionState = AscendAttentionState.DecodeOnly,
-        model: Optional[nn.Module] = None,
     ):
         if attn_state in {
                 AscendAttentionState.DecodeOnly,
@@ -669,7 +651,6 @@ class AscendMLAMetadataBuilder:
             attn_metadata = self.build(
                 common_prefix_len=0,
                 common_attn_metadata=common_attn_metadata,
-                model=model,
             )
         else:
             raise NotImplementedError(

@@ -90,7 +90,7 @@ class AscendAttentionCPMetadataBuilder(AscendAttentionMetadataBuilder):
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: Optional[nn.Module] = None,
+        fast_build: bool = False,
     ):
         num_reqs = common_attn_metadata.num_reqs
         num_actual_tokens = common_attn_metadata.num_actual_tokens

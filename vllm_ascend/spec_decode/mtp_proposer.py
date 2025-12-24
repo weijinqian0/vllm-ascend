@@ -279,8 +279,8 @@ class MtpProposer(Proposer):
 
                 builder = self.runner.attn_groups[0][0].get_metadata_builder()
                 attn_metadata_mtp = builder.build_for_graph_capture(
-                    common_attn_metadata, AscendAttentionState.SpecDecoding,
-                    self.runner.get_model())
+                    common_attn_metadata, AscendAttentionState.SpecDecoding
+                )
                 attn_metadata = {}
                 for layer_name in self.attn_layer_name:
                     attn_metadata[layer_name] = attn_metadata_mtp

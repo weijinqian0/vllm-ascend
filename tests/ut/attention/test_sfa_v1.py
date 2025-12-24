@@ -178,14 +178,9 @@ class TestAscendSFAMetadataBuilder(TestBase):
         common_attn_metadata.sin = None
         common_attn_metadata.num_input_tokens = 100
 
-        model = MagicMock()
-        model.model.layers = [MagicMock() for _ in range(10)]
-        model.model.start_layer = 0
-
         attn_metadata = builder.build_for_graph_capture(
             common_attn_metadata=common_attn_metadata,
             attn_state=AscendAttentionState.DecodeOnly,
-            model=model,
         )
 
         assert isinstance(attn_metadata, AscendSFAMetadata)

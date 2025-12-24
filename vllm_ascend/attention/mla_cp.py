@@ -92,7 +92,6 @@ class AscendMlaCPMetadataBuilder(AscendMLAMetadataBuilder):
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
     ) -> AscendPCPMetadata | None:
         common_long_seq_metadata = common_attn_metadata.prefill_context_parallel_metadata
         assert common_long_seq_metadata is not None
@@ -121,10 +120,9 @@ class AscendMlaCPMetadataBuilder(AscendMLAMetadataBuilder):
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
     ):
         chunked_context_metadata = super().build_chunked_metadata(
-            common_prefix_len, common_attn_metadata, model)
+            common_prefix_len, common_attn_metadata)
         if chunked_context_metadata is None:
             return None
 
@@ -205,12 +203,11 @@ class AscendMlaCPMetadataBuilder(AscendMLAMetadataBuilder):
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
     ) -> AscendMLAPrefillMetadata:
         prefill_metadata = super().build_prefill_metadata(
-            common_prefix_len, common_attn_metadata, model)
+            common_prefix_len, common_attn_metadata)
         prefill_metadata.pcp_metadata = self.build_cp_metadata(
-            common_prefix_len, common_attn_metadata, model)
+            common_prefix_len, common_attn_metadata)
         prefill_metadata.block_table = self.block_table[
             self.num_decodes_flatten:, ...]
         return prefill_metadata
@@ -219,10 +216,9 @@ class AscendMlaCPMetadataBuilder(AscendMLAMetadataBuilder):
         self,
         common_prefix_len: int,
         common_attn_metadata: AscendCommonAttentionMetadata,
-        model: nn.Module,
     ) -> AscendMLADecodeMetadata:
         decode_metadata = super().build_decode_metadata(
-            common_prefix_len, common_attn_metadata, model)
+            common_prefix_len, common_attn_metadata)
 
         long_seq_metadata = common_attn_metadata.prefill_context_parallel_metadata
         assert long_seq_metadata is not None

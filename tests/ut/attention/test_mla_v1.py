@@ -751,9 +751,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
 
-        mock_model = MagicMock()
         metadata = builder.build_for_graph_capture(
-            common_attn_metadata, AscendAttentionState.DecodeOnly, mock_model)
+            common_attn_metadata, AscendAttentionState.DecodeOnly)
 
         self.assertIsInstance(metadata, AscendMLAMetadata)
         self.assertEqual(metadata.num_actual_tokens,
@@ -796,12 +795,9 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
 
-        mock_model = MagicMock()
-
         with self.assertRaises(NotImplementedError) as ctx:
             builder.build_for_graph_capture(
-                common_attn_metadata, AscendAttentionState.PrefillNoCache,
-                mock_model)
+                common_attn_metadata, AscendAttentionState.PrefillNoCache)
         self.assertIn(
             "Currently we only support building dummy metadata for DecodeOnly and SpecDecoding state",
             str(ctx.exception))
