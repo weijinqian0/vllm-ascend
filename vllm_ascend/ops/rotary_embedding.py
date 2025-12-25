@@ -63,7 +63,6 @@ def set_cos_and_sin(vllm_config, max_num_reqs, decode_token_per_req, dtype,
         _sin is not None:
         return
 
-    compilation_config = vllm_config.compilation_config
     model_config = vllm_config.model_config
     max_num_batched_tokens = vllm_config.scheduler_config.max_num_batched_tokens
 
