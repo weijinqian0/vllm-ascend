@@ -344,7 +344,8 @@ class TestAscendMLAMetadataBuilder(TestBase):
         block_table = torch.Tensor([[1, 0], [2, 0], [3, 0], [4, 0]]).int()
         common_metadata.block_table_tensor = block_table
         common_metadata.prefill_context_parallel_metadata = None
-        mock_get_cos_and_sin_mla.return_value = (torch.tensor(6), torch.Tensor(6))
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor([6, 6]),
+                                                 torch.Tensor([6, 6]))
         metadata = builder.build(0, common_metadata)
 
         self.assertEqual(metadata.decode.actual_seq_lengths_q,
@@ -583,7 +584,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10), torch.Tensor(10))
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10),
+                                                 torch.Tensor(10))
         metadata = builder.build(1, common_attn_metadata)
 
         self.assertIsInstance(metadata, AscendMLAMetadata)
@@ -649,7 +651,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10), torch.Tensor(10))
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10),
+                                                 torch.Tensor(10))
         metadata = builder.build(1, common_attn_metadata)
 
         self.assertIsInstance(metadata, AscendMLAMetadata)
@@ -703,7 +706,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10), torch.Tensor(10))
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor([10, 10]),
+                                                 torch.Tensor([10, 10]))
         metadata = builder.build(1, common_attn_metadata)
 
         self.assertIsInstance(metadata, AscendMLAMetadata)
@@ -757,7 +761,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor([10, 10]),
+                                                 torch.Tensor([10, 10]))
         metadata = builder.build_for_graph_capture(
             common_attn_metadata, AscendAttentionState.DecodeOnly)
 
@@ -803,7 +808,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10),
+                                                 torch.Tensor(10))
         with self.assertRaises(NotImplementedError) as ctx:
             builder.build_for_graph_capture(
                 common_attn_metadata, AscendAttentionState.PrefillNoCache)
