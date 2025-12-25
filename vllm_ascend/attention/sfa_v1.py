@@ -181,8 +181,10 @@ class AscendSFAMetadataBuilder(MLACommonMetadataBuilder[AscendSFAMetadata]):
 
         cum_query_lens = common_attn_metadata.query_start_loc[1:num_reqs + 1]
         seq_lens = common_attn_metadata.seq_lens[:num_reqs]
-
-        cos, sin = get_cos_and_sin_mla(input_positions)
+        if has_prefill:
+            cos, sin = get_cos_and_sin_mla(input_positions)
+        else:
+            cos, sin = get_cos_and_sin_mla(input_positions, True)
 
         sfa_cp_context = None
         if self.enable_sfa_cp:
