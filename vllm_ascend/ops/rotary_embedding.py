@@ -100,16 +100,18 @@ def set_cos_and_sin(vllm_config, max_num_reqs, decode_token_per_req, dtype,
                            device=device)
 
 
-def get_cos_and_sin_mla(positions):
+def get_cos_and_sin_mla(positions, use_cache=False):
     global _cos_cache
     global _sin_cache
+    cos = _cos_cache[positions].unsqueeze(1).unsqueeze(2)
+    sin = _sin_cache[positions].unsqueeze(1).unsqueeze(2)
+    if not use_cache:
+        return cos, sin
     global _cos_mla
     global _sin_mla
     num_tokens = positions.size(0)
-    _cos_mla[:num_tokens,
-             ...] = _cos_cache[positions].unsqueeze(1).unsqueeze(2)
-    _sin_mla[:num_tokens,
-             ...] = _sin_cache[positions].unsqueeze(1).unsqueeze(2)
+    _cos_mla[:num_tokens, ...] = cos
+    _sin_mla[:num_tokens, ...] = sin
     return _cos_mla[:num_tokens, ...], _sin_mla[:num_tokens, ...]
 
 

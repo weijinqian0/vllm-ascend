@@ -1,5 +1,5 @@
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import torch
 from vllm.v1.attention.backends.utils import AttentionCGSupport
@@ -147,6 +147,7 @@ class TestAscendSFAMetadataBuilder(TestBase):
         assert metadata.num_actual_tokens == common_attn_metadata.num_actual_tokens
         assert metadata.slot_mapping.shape == (100, 4, 1024)
 
+    @patch("vllm_ascend.device_allocator.camem.init_module")
     def test_ascend_sfa_metadata_builder_build_for_graph_capture(self):
         kv_cache_spec = MagicMock()
         layer_names = ["layer1", "layer2"]

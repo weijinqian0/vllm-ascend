@@ -623,7 +623,7 @@ class AscendMLAMetadataBuilder(MLACommonMetadataBuilder[AscendMLAMetadata]):
                     num_reqs_pad_size, num_reqs, actual_seq_lengths_q,
                     common_attn_metadata)
 
-        cos, sin = get_cos_and_sin_mla(input_positions)
+        cos, sin = get_cos_and_sin_mla(input_positions, use_cache=True)
         decode_metadata = AscendMLADecodeMetadata(
             input_positions=input_positions,
             block_table=self.block_table,
