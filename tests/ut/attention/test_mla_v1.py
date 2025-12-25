@@ -289,6 +289,7 @@ class TestAscendMLAMetadataBuilder(TestBase):
                 builder.chunked_prefill_enabled,
                 mock_vllm_config.scheduler_config.enable_chunked_prefill)
 
+    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch('vllm.distributed.parallel_state._PCP',
            new_callable=lambda: MagicMock(spec=GroupCoordinator))
@@ -296,7 +297,8 @@ class TestAscendMLAMetadataBuilder(TestBase):
     @patch('vllm.distributed.parallel_state._DCP',
            new_callable=lambda: MagicMock(spec=GroupCoordinator))
     def test_ascend_mla_metadata_builder_build_full_graph(
-            self, mock_dcp, mock_get_dcp_group, mock_pcp, mock_get_pcp_group):
+            self, mock_dcp, mock_get_dcp_group, mock_pcp, mock_get_pcp_group,
+            mock_get_cos_and_sin_mla):
         mock_vllm_config = MagicMock()
         mock_vllm_config.model_config.max_model_len = 1024
         mock_vllm_config.model_config.get_head_size.return_value = 64
@@ -526,6 +528,7 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
         self.kv_cache_spec.head_size = 128
         self.kv_cache_spec.num_heads = 32
 
+    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
@@ -534,7 +537,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
     @patch("torch.npu.is_available")
     def test_build_prefix_no_cache_metadata(self, mock_npu_available,
                                             mock_zeros, mock_dcp_world_size,
-                                            mock_get_pcp_group):
+                                            mock_get_pcp_group,
+                                            mock_get_cos_and_sin_mla):
         mock_npu_available.return_value = False
         mock_dcp_world_size.return_value = 1
         torch.Tensor.pin_memory = lambda x: x  # noqa
@@ -590,6 +594,7 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
+    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
@@ -598,7 +603,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
     @patch("torch.npu.is_available")
     def test_build_chunked_prefix_metadata(self, mock_npu_available,
                                            mock_zeros, mock_dcp_world_size,
-                                           mock_get_pcp_group):
+                                           mock_get_pcp_group,
+                                           mock_get_cos_and_sin_mla):
         mock_npu_available.return_value = False
         mock_dcp_world_size.return_value = 1
         torch.Tensor.pin_memory = lambda x: x  # noqa
@@ -655,11 +661,13 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
+    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
     def test_build_decode_only_metadata(self, mock_dcp_world_size,
-                                        mock_get_pcp_group):
+                                        mock_get_pcp_group,
+                                        mock_get_cos_and_sin_mla):
         mock_dcp_world_size.return_value = 1
         torch.Tensor.pin_memory = lambda x: x  # noqa
 
@@ -708,11 +716,13 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
+    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
     def test_build_for_graph_capture_decode_only(self, mock_dcp_world_size,
-                                                 mock_get_pcp_group):
+                                                 mock_get_pcp_group,
+                                                 mock_get_cos_and_sin_mla):
         mock_dcp_world_size.return_value = 1
         torch.Tensor.pin_memory = lambda x: x  # noqa
 
@@ -761,11 +771,13 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
+    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
     def test_build_for_graph_capture_prefill(self, mock_dcp_world_size,
-                                             mock_get_pcp_group):
+                                             mock_get_pcp_group,
+                                             mock_get_cos_and_sin_mla):
         mock_dcp_world_size.return_value = 1
         torch.Tensor.pin_memory = lambda x: x  # noqa
         pcp_group = MagicMock(spec=GroupCoordinator)
