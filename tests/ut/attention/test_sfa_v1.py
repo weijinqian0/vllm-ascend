@@ -134,14 +134,11 @@ class TestAscendSFAMetadataBuilder(TestBase):
         common_attn_metadata.sin = None
         common_attn_metadata.num_input_tokens = 100
 
-        model = MagicMock()
-        model.model.layers = [MagicMock() for _ in range(10)]
-        model.model.start_layer = 0
+        mock_get_cos_and_sin_mla.return_value = (torch.randn(100), torch.randn(100))
 
         metadata = builder.build(
             common_prefix_len=10,
             common_attn_metadata=common_attn_metadata,
-            model=model,
         )
 
         assert isinstance(metadata, AscendSFAMetadata)
@@ -180,6 +177,8 @@ class TestAscendSFAMetadataBuilder(TestBase):
         common_attn_metadata.cos = None
         common_attn_metadata.sin = None
         common_attn_metadata.num_input_tokens = 100
+
+        mock_get_cos_and_sin_mla.return_value = (torch.randn(100), torch.randn(100))
 
         attn_metadata = builder.build_for_graph_capture(
             common_attn_metadata=common_attn_metadata,

@@ -289,7 +289,7 @@ class TestAscendMLAMetadataBuilder(TestBase):
                 builder.chunked_prefill_enabled,
                 mock_vllm_config.scheduler_config.enable_chunked_prefill)
 
-    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
+    @patch("vllm_ascend.attention.mla_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch('vllm.distributed.parallel_state._PCP',
            new_callable=lambda: MagicMock(spec=GroupCoordinator))
@@ -332,7 +332,6 @@ class TestAscendMLAMetadataBuilder(TestBase):
         builder = AscendMLAMetadataBuilder(None, None, mock_vllm_config,
                                            mock_device)
         common_metadata = MagicMock()
-        model = MagicMock()
         common_metadata.graph_pad_size = 8
         common_metadata.num_reqs = 4
         common_metadata.num_actual_tokens = 5
@@ -345,7 +344,8 @@ class TestAscendMLAMetadataBuilder(TestBase):
         block_table = torch.Tensor([[1, 0], [2, 0], [3, 0], [4, 0]]).int()
         common_metadata.block_table_tensor = block_table
         common_metadata.prefill_context_parallel_metadata = None
-        metadata = builder.build(0, common_metadata, model)
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor(6), torch.Tensor(6))
+        metadata = builder.build(0, common_metadata)
 
         self.assertEqual(metadata.decode.actual_seq_lengths_q,
                          [1, 2, 4, 5, 6, 6, 7, 8])
@@ -528,7 +528,7 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
         self.kv_cache_spec.head_size = 128
         self.kv_cache_spec.num_heads = 32
 
-    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
+    @patch("vllm_ascend.attention.mla_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
@@ -583,9 +583,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-
-        mock_model = MagicMock()
-        metadata = builder.build(1, common_attn_metadata, mock_model)
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10), torch.Tensor(10))
+        metadata = builder.build(1, common_attn_metadata)
 
         self.assertIsInstance(metadata, AscendMLAMetadata)
         self.assertEqual(metadata.num_actual_tokens,
@@ -594,7 +593,7 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
-    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
+    @patch("vllm_ascend.attention.mla_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
@@ -650,9 +649,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-
-        mock_model = MagicMock()
-        metadata = builder.build(1, common_attn_metadata, mock_model)
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10), torch.Tensor(10))
+        metadata = builder.build(1, common_attn_metadata)
 
         self.assertIsInstance(metadata, AscendMLAMetadata)
         self.assertEqual(metadata.num_actual_tokens,
@@ -661,7 +659,7 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
-    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
+    @patch("vllm_ascend.attention.mla_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
@@ -705,9 +703,8 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
                                            layer_names=["layer_0", "layer_1"],
                                            vllm_config=self.mock_vllm_config,
                                            device=self.mock_device)
-
-        mock_model = MagicMock()
-        metadata = builder.build(1, common_attn_metadata, mock_model)
+        mock_get_cos_and_sin_mla.return_value = (torch.tensor(10), torch.Tensor(10))
+        metadata = builder.build(1, common_attn_metadata)
 
         self.assertIsInstance(metadata, AscendMLAMetadata)
         self.assertEqual(metadata.num_actual_tokens,
@@ -716,7 +713,7 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
-    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
+    @patch("vllm_ascend.attention.mla_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
@@ -771,7 +768,7 @@ class TestAscendMLAMetadataBuilderBuild(TestBase):
             torch.all(metadata.slot_mapping == base_inputs["slot_mapping"]))
         self.assertEqual(metadata.head_dim, self.kv_cache_spec.head_size)
 
-    @patch("vllm_ascend.attention.sfa_v1.get_cos_and_sin_mla")
+    @patch("vllm_ascend.attention.mla_v1.get_cos_and_sin_mla")
     @patch('vllm.distributed.parallel_state.get_pcp_group')
     @patch("vllm.distributed.get_decode_context_model_parallel_world_size",
            return_value=1)
