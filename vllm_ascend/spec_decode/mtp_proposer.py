@@ -945,7 +945,8 @@ class MtpProposer(Proposer):
                             graph_pad_size - batch_size,
                             batch_size,
                             decode_metadata.actual_seq_lengths_q)
-                decode_metadata.cos, decode_metadata.sin = get_cos_and_sin_mla(positions[:batch_size])
+                decode_metadata.cos, decode_metadata.sin = get_cos_and_sin_mla(
+                    positions[:batch_size])
             # NOTE(woosuk): We should handle the case where the draft model
             # generates tokens beyond the max model length. Since it is complex
             # to remove such requests from the batch, we keep them in the batch
