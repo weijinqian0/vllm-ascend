@@ -737,7 +737,6 @@ def _init_ascend_device_type():
     global _ascend_device_type
     from vllm_ascend import _build_info  # type: ignore
     _ascend_device_type = AscendDeviceType[_build_info.__device_type__]
-    set_device(_ascend_device_type)
 
 
 def check_ascend_device_type():
