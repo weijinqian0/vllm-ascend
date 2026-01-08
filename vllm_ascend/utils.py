@@ -35,7 +35,6 @@ from vllm.sequence import IntermediateTensors
 
 import vllm_ascend.envs as envs_ascend
 from vllm_ascend.ascend_config import WeightPrefetchConfig, get_ascend_config
-from vllm_ascend.device.device_op import set_device
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
