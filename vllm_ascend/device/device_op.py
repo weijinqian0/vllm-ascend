@@ -17,7 +17,7 @@ class CommonDeviceOperator(object):
             value_cache=value_cache,
             slot_indices=slot_mapping)
 
-class A5Operator(CommonDeviceOperator):
+class A5DeviceOperator(CommonDeviceOperator):
     @classmethod
     def reshape_and_cache(cls, key, value, key_cache, value_cache, slot_mapping):
         torch_npu.npu_scatter_pa_kv_cache(
@@ -33,5 +33,5 @@ DeviceOperator: Optional[CommonDeviceOperator.__class__] = None
 def set_device(ascend_device_type):
     global DeviceOperator
     if ascend_device_type == AscendDeviceType.A5:
-        DeviceOperator = A5Operator
+        DeviceOperator = A5DeviceOperator
     DeviceOperator = CommonDeviceOperator
