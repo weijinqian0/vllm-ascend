@@ -44,8 +44,7 @@ from vllm_ascend.compilation.acl_graph import (
     get_draft_graph_params, get_graph_params,
     update_draft_graph_params_workspaces, update_graph_params_workspaces)
 from vllm_ascend.device.device_op import DeviceOperator
-from vllm_ascend.utils import (AscendDeviceType, get_ascend_device_type,
-                               weak_ref_tensors)
+from vllm_ascend.utils import weak_ref_tensors
 
 # default max value of sliding window size
 SWA_INT_MAX = 2147483647
@@ -671,11 +670,11 @@ class AscendAttentionBackendImpl(AttentionImpl):
                 self.key_cache, self.value_cache = kv_cache[0], kv_cache[1]
             slots = attn_metadata.slot_mapping
             DeviceOperator.reshape_and_cache(
-                    key=key[:attn_metadata.num_actual_tokens],
-                    value=value[:attn_metadata.num_actual_tokens],
-                    key_cache=self.key_cache,
-                    value_cache=self.value_cache,
-                    slot_indices=slots[:attn_metadata.num_actual_tokens])
+                key=key[:attn_metadata.num_actual_tokens],
+                value=value[:attn_metadata.num_actual_tokens],
+                key_cache=self.key_cache,
+                value_cache=self.value_cache,
+                slot_mapping=slots[:attn_metadata.num_actual_tokens])
             if self.is_kv_producer:
                 attn_metadata.reshape_cache_event.record()
         return key, value
