@@ -15,7 +15,7 @@
 # limitations under the License.
 # This file is a part of the vllm-ascend project.
 #
-from typing import Optional
+from typing import Optional, Type
 
 import torch_npu
 
@@ -53,5 +53,4 @@ def get_device_operator():
     return CommonDeviceOperator
 
 
-DeviceOperator: Optional[
-    CommonDeviceOperator.__class__] = get_device_operator()
+DeviceOperator: Optional[Type['CommonDeviceOperator']] = get_device_operator()
