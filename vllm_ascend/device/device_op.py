@@ -46,11 +46,11 @@ class A5DeviceAdaptor(BaseDeviceAdaptor):
                                           slot_mapping=slot_mapping)
 
 
-def get_device_operator():
+def get_device_adaptor():
     ascend_device_type = get_ascend_device_type()
     if ascend_device_type == AscendDeviceType.A5:
         return A5DeviceAdaptor
     return BaseDeviceAdaptor
 
 
-DeviceOperator: Optional[Type['BaseDeviceAdaptor']] = get_device_operator()
+DeviceOperator: Optional[Type['BaseDeviceAdaptor']] = get_device_adaptor()
