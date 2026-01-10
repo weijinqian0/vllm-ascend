@@ -22,7 +22,7 @@ import torch_npu
 from vllm_ascend.utils import AscendDeviceType, get_ascend_device_type
 
 
-class CommonDeviceOperator(object):
+class BaseDeviceAdaptor(object):
 
     @classmethod
     def reshape_and_cache(cls, key, value, key_cache, value_cache,
@@ -34,7 +34,7 @@ class CommonDeviceOperator(object):
                                          slot_indices=slot_mapping)
 
 
-class A5DeviceOperator(CommonDeviceOperator):
+class A5DeviceAdaptor(BaseDeviceAdaptor):
 
     @classmethod
     def reshape_and_cache(cls, key, value, key_cache, value_cache,
@@ -49,8 +49,8 @@ class A5DeviceOperator(CommonDeviceOperator):
 def get_device_operator():
     ascend_device_type = get_ascend_device_type()
     if ascend_device_type == AscendDeviceType.A5:
-        return A5DeviceOperator
-    return CommonDeviceOperator
+        return A5DeviceAdaptor
+    return BaseDeviceAdaptor
 
 
-DeviceOperator: Optional[Type['CommonDeviceOperator']] = get_device_operator()
+DeviceOperator: Optional[Type['BaseDeviceAdaptor']] = get_device_operator()
