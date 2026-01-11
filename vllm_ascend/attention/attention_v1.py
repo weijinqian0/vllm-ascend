@@ -45,8 +45,7 @@ from vllm_ascend.compilation.acl_graph import (
     update_draft_graph_params_workspaces, update_graph_params_workspaces)
 from vllm_ascend.device.device_op import DeviceOperator
 from vllm_ascend.ops.flashcomm2_oshard_manager import flashcomm2_oshard_manager
-from vllm_ascend.utils import (AscendDeviceType, get_ascend_device_type,
-                               weak_ref_tensors)
+from vllm_ascend.utils import weak_ref_tensors
 
 # default max value of sliding window size
 SWA_INT_MAX = 2147483647
@@ -685,13 +684,13 @@ class AscendAttentionBackendImpl(AttentionImpl):
             encoder_decoder = (self.attn_type == AttentionType.ENCODER_DECODER)
             DeviceOperator.reshape_and_cache(
                 key=key[:attn_metadata.num_actual_tokens]
-                    if not encoder_decoder else key,
+                if not encoder_decoder else key,
                 value=value[:attn_metadata.num_actual_tokens]
-                    if not encoder_decoder else value,
+                if not encoder_decoder else value,
                 key_cache=self.key_cache,
                 value_cache=self.value_cache,
                 slot_mapping=slots[:attn_metadata.num_actual_tokens]
-                    if not encoder_decoder else slots)
+                if not encoder_decoder else slots)
             if self.is_kv_producer:
                 attn_metadata.reshape_cache_event.record()
         return key, value
