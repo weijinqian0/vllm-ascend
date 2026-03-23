@@ -135,7 +135,6 @@ def _post_update_kernel(
         total_len = tl.load(total_len_ptr + req_state_idx)
         num_sampled = tl.load(num_sampled_ptr + row_idx)
 
-        # 更新last_sampled_tokens和total_len（只在有采样时）
         if num_sampled > 0:
             token_id = tl.load(sampled_tokens_ptr + row_idx * sampled_tokens_stride + num_sampled - 1)
             tl.store(last_sampled_tokens_ptr + req_state_idx, token_id)
@@ -154,7 +153,6 @@ def _post_update_kernel(
                 token_id,
             )
 
-        # 更新num_computed_tokens
         query_start = tl.load(query_start_loc_ptr + row_idx)
         query_end = tl.load(query_start_loc_ptr + row_idx + 1)
         query_len = query_end - query_start
