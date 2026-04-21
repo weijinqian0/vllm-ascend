@@ -20,7 +20,7 @@
 | HeXiang Wang| [@whx-sjtu](https://github.com/whx-sjtu) | 2026/01 |
 
 ## Contributors
-<!-- last_commit: 84bddfdccc9224dbb5af6bbd14db299ebc7d0b4d -->
+<!-- last_commit: aa8ac74984e2fbc07afbd19cb367b542ccc964b7 -->
 
 Every release of vLLM Ascend would not have been possible without the following contributors:
 
