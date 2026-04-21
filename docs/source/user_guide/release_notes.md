@@ -1,5 +1,66 @@
 # Release Notes
 
+## v0.19.0rc1 - 2026.04.22
+
+This is the first release candidate of v0.19.0rc1 for vLLM Ascend.
+Please follow the [official doc](https://docs.vllm.ai/projects/ascend/en/latest) to get started.
+
+### Highlights
+
+- **Graph Capture Memory Planning**: Account for NPU graph capture memory in KV cache planning to avoid OOM
+- **Dynamic Chunk for Chunked Pipeline Parallelism**: Support dynamic chunk for CPP in model_runner_v2
+- **Hamming-based Sparse Attention**: New sparse attention operators for improved efficiency
+
+### Features
+
+- Qwen3VLMoe architecture support in xlite backend
+- DFlash support for model_runner_v2
+- Structured output support for model_runner_v2
+- EPLB Swift balancer policy supports mix placement
+- KV Pool hybrid alignment prefix cache support
+
+### Hardware and Operator Support
+
+- Ascend 950 w8a8mxfp8 for MoE models
+- Conv3D to linear optimization when kernel size equals stride
+
+### Performance
+
+- Reduce prefill KV all-gather communication for PCP/DCP
+- Optimize split_qkv_tp_rmsnorm_rope ops
+- Optimize _temperature_kernel and _topk_log_softmax_kernel (triton)
+- Initialize VLLM metrics in EPLB worker
+
+### Bug Fixes
+
+- Fix compute_slot_mapping triton for pcp+eagle3
+- Handle num_cached_tokens/num_external_computed_tokens for different vllm versions
+- Fix w8a8 dispatch ffn combine bias param
+- Fix DSA-CP PD role gating for DeepSeek V3.2
+- Fix quant_bias missing in w8a8_static when flashcomm1 is enabled for GLM-5
+- Fix remote KV waiting promotion in patch balance scheduler
+- Resolve PD KV head count via ModelConfig.get_total_num_kv_heads()
+- Handle piecewise mode synchronization
+
+### Dependencies
+
+- Upgrade vllm to v0.19.1
+- Mooncake version bump to v0.3.9
+
+### Documentation
+
+- Update UCM documents
+- Merge npugraph_ex guide into graph_mode doc
+
+### Known Issues
+
+- Some issues identified in v0.18.0rc1 feedback remain under investigation:
+  - Qwen3.5 PD disaggregation accuracy
+  - Mooncake transfer self-healing precision
+  - MoE model accuracy bugs
+  - MTP drafter batchIdx crash
+  - Kimi K2.5 high concurrency + function call accuracy
+
 ## v0.18.0rc1 - 2026.04.01
 
 This is the first release candidate of v0.18.0 for vLLM Ascend. Please follow the [official doc](https://docs.vllm.ai/projects/ascend/en/latest) to get started.
