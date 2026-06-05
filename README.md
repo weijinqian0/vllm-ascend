@@ -26,7 +26,6 @@ vLLM Ascend Plugin
 ---
 *Latest News* 🔥
 
-- [2026/06] We released the new official version [v0.20.2rc](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.20.2rc1)! Please follow the [official guide](https://docs.vllm.ai/projects/ascend/en/v0.20.2rc/) to try vLLM Ascend Plugin on Ascend.
 - [2026/05] We released the new official version [v0.18.0](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.18.0)! Please follow the [official guide](https://docs.vllm.ai/projects/ascend/en/v0.18.0/) to start using vLLM Ascend Plugin on Ascend.
 - [2026/02] We released the new official version [v0.13.0](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.13.0)! Please follow the [official guide](https://docs.vllm.ai/projects/ascend/en/v0.13.0/) to start using vLLM Ascend Plugin on Ascend.
 
@@ -94,7 +93,7 @@ Below are the maintained branches:
 | v0.11.0-dev      | Unmaintained | Only bug fixes are allowed, and no new release tags anymore. |
 | releases/v0.13.0 | Maintained   | CI commitment for vLLM 0.13.0 version |
 | releases/v0.18.0 | Maintained   | CI commitment for vLLM 0.18.0 version |
-| releases/v0.20.2rc | Maintained | CI commitment for vLLM 0.20.2 release candidate |
+| releases/v0.20.2rc | Maintained | CI commitment for vLLM 0.20.2 version |
 | rfc/feature-name | Maintained   | [Feature branches](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html#feature-branches) for collaboration |
   
 Please refer to [Versioning policy](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html) for more details.

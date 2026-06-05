@@ -20,7 +20,6 @@ vLLM Ascend Plugin
 ---
 *最新消息* 🔥
 
-- [2026/06] 我们发布了新的 RC 版本 [v0.20.2rc](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.20.2rc1)! 请按照[官方指南](https://docs.vllm.ai/projects/ascend/en/v0.20.2rc/)开始在Ascend上试用vLLM Ascend Plugin。
 - [2026/05] 我们发布了新的正式版本 [v0.18.0](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.18.0)! 请按照[官方指南](https://docs.vllm.ai/projects/ascend/en/v0.18.0/)开始在Ascend上部署vLLM Ascend Plugin。
 - [2026/02] 我们发布了新的正式版本 [v0.13.0](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.13.0)! 请按照[官方指南](https://docs.vllm.ai/projects/ascend/en/v0.13.0/)开始在Ascend上部署vLLM Ascend Plugin。
 
@@ -81,14 +80,14 @@ vllm-ascend有主干分支和开发分支。
 
 | 分支              | 状态         | 备注                  |
 |------------------|--------------|----------------------|
-| main             | Maintained   | 基于vLLM main分支和vLLM最新版本（v0.20.2）CI看护   |
+| main             | Maintained   | 基于vLLM main分支和vLLM最新版本（v0.20.2）CI看护 |
 | v0.7.1-dev       | Unmaintained | 不再维护 |
 | v0.7.3-dev       | Unmaintained | 只允许Bug修复，不会再发布新版本 |
 | v0.9.1-dev       | Unmaintained | 只允许Bug修复，不会再发布新版本 |
 | v0.11.0-dev      | Unmaintained | 只允许Bug修复，不会再发布新版本 |
 | releases/v0.13.0 | Maintained   | 基于vLLM v0.13.0版本CI看护 |
 | releases/v0.18.0 | Maintained   | 基于vLLM v0.18.0版本CI看护 |
-| releases/v0.20.2rc | Maintained | 基于vLLM v0.20.2 RC版本CI看护 |
+| releases/v0.20.2rc | Maintained | 基于vLLM v0.20.2版本CI看护 |
 | rfc/feature-name | Maintained   | 为协作创建的[特性分支](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html#feature-branches) |
 
 请参阅[版本策略](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html)了解更多详细信息。
