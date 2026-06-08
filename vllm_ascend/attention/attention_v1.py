@@ -148,6 +148,10 @@ class AscendAttentionState(Enum):
     SpecDecoding = 4
 
 
+def _skip_fia_attn_mask(attn_state: AscendAttentionState) -> bool:
+    return attn_state in (AscendAttentionState.DecodeOnly, AscendAttentionState.SpecDecoding)
+
+
 @dataclass
 class AscendMetadata:
     """
@@ -305,9 +309,6 @@ class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
 
         attn_state = common_attn_metadata.attn_state
 
-        # Get attn_mask from singleton AttentionMaskBuilder
-        attn_mask = self.attn_mask_builder.get_attention_mask(common_attn_metadata.causal, self.model_config)
-
         # TODO: Yet another unnecessary H2D while we already have a query_start_loc on device
         query_start_loc = query_start_loc_cpu.pin_memory().to(self.device, non_blocking=True)
 
@@ -322,7 +323,11 @@ class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
             max_query_len=common_attn_metadata.max_query_len,
             actual_seq_lengths_q=query_start_loc_cpu[1:].tolist(),
             slot_mapping=slot_mapping,
-            attn_mask=attn_mask,
+            attn_mask=(
+                None
+                if _skip_fia_attn_mask(attn_state)
+                else self.attn_mask_builder.get_attention_mask(common_attn_metadata.causal, self.model_config)
+            ),
             attn_state=attn_state,
             num_prefills=num_prefills,
             num_decodes=num_decodes,
@@ -352,6 +357,8 @@ class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
             )
 
         attn_metadata.attn_state = attn_state
+        if _skip_fia_attn_mask(attn_state):
+            attn_metadata.attn_mask = None
         return attn_metadata
 
 
@@ -883,7 +890,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
                 weak_ref_tensors(key),
                 weak_ref_tensors(value),
                 weak_ref_tensors(block_table),
-                weak_ref_tensors(attn_metadata.attn_mask),
+                weak_ref_tensors(attn_metadata.attn_mask) if attn_metadata.attn_mask is not None else None,
                 block_size,
                 actual_seq_lengths_kv,
                 self.num_kv_heads,
