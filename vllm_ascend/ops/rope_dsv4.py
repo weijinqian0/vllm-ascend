@@ -69,7 +69,7 @@ def get_cos_and_sin_dsa(positions: torch.Tensor | dict[str, torch.Tensor], use_c
     for config_key, registered_groups in _ROPE_STATE.registry_summary.items():
         if config_key not in _ROPE_STATE.static_cache:
             continue
-        static_cos, static_sin = compute_cos_and_sin()
+        static_cos, static_sin = compute_cos_and_sin(config_key)
 
         batch_result[config_key] = {}
 
@@ -156,13 +156,14 @@ class ComplexExpRotaryEmbedding(nn.Module):
             inv_freq = self.precompute_freqs_cis(
                 rotary_dim, max_position_embeddings, max_position_embeddings, base, scaling_factor, beta_fast, beta_slow
             )
-            global ROTARY_DIM, MAX_POS, BASE, SCALING_FACTOR, BETA_FAST, BETA_SLOW
-            ROTARY_DIM = rotary_dim
-            MAX_POS = max_position_embeddings
-            BASE = base
-            SCALING_FACTOR = scaling_factor
-            BETA_FAST = beta_fast
-            BETA_SLOW = beta_slow
+            _ROPE_CONFIGS[config_key] = (
+                rotary_dim,
+                max_position_embeddings,
+                base,
+                scaling_factor,
+                beta_fast,
+                beta_slow,
+            )
             t = torch.arange(
                 max_position_embeddings * scaling_factor,
                 device=current_platform.device_type,
