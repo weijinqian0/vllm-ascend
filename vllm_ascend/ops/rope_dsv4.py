@@ -99,21 +99,17 @@ def get_cos_and_sin_dsa(positions: torch.Tensor | dict[str, torch.Tensor], use_c
     return RopeDataProxy(batch_result, is_cos=True), RopeDataProxy(batch_result, is_cos=False)
 
 
-ROTARY_DIM = 0
-MAX_POS = 0
-BASE = 0
-SCALING_FACTOR = 0
-BETA_FAST = 0
-BETA_SLOW = 0
+_ROPE_CONFIGS = {}
 
 
 # Recompute the values to avoid the cache issue.
-def compute_cos_and_sin():
+def compute_cos_and_sin(config_key: str):
+    rotary_dim, max_pos, base, scaling_factor, beta_fast, beta_slow = _ROPE_CONFIGS[config_key]
     inv_freq = ComplexExpRotaryEmbedding.precompute_freqs_cis(
-        ROTARY_DIM, MAX_POS, MAX_POS, BASE, SCALING_FACTOR, BETA_FAST, BETA_SLOW
+        rotary_dim, max_pos, max_pos, base, scaling_factor, beta_fast, beta_slow
     )
     t = torch.arange(
-        MAX_POS * SCALING_FACTOR,
+        int(max_pos * scaling_factor),
         device=current_platform.device_type,
         dtype=torch.float32,
     )
