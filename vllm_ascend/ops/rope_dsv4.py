@@ -1,4 +1,5 @@
 import math
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -58,42 +59,44 @@ class RopeDataProxy:
 
 
 def get_cos_and_sin_dsa(positions: torch.Tensor | dict[str, torch.Tensor], use_cache: bool = False):
-    static_cos, static_sin = compute_cos_and_sin()
-    curr_cos = static_cos[positions]
-    curr_sin = static_sin[positions]
-    return curr_cos, curr_sin
+    if isinstance(positions, torch.Tensor):
+        pos_map = {"default": positions}
+    else:
+        pos_map = positions
 
-    # for config_key, registered_groups in _ROPE_STATE.registry_summary.items():
-    #     if config_key not in _ROPE_STATE.static_cache:
-    #         continue
-    #     static_cos, static_sin = _ROPE_STATE.static_cache[config_key]
-    #
-    #     batch_result[config_key] = {}
-    #
-    #     for group_name, pos_tensor in pos_map.items():
-    #         if group_name not in registered_groups:
-    #             continue
-    #
-    #         curr_cos = static_cos[pos_tensor]
-    #         curr_sin = static_sin[pos_tensor]
-    #
-    #         if use_cache:
-    #             group_buffers = _ROPE_STATE.runtime_buffer.get(config_key, {}).get(group_name)
-    #
-    #             if group_buffers is None:
-    #                 continue
-    #
-    #             buf_cos, buf_sin = group_buffers
-    #             num_tokens = pos_tensor.size(0)
-    #
-    #             buf_cos[:num_tokens].copy_(curr_cos)
-    #             buf_sin[:num_tokens].copy_(curr_sin)
-    #
-    #             batch_result[config_key][group_name] = (buf_cos[:num_tokens], buf_sin[:num_tokens])
-    #         else:
-    #             batch_result[config_key][group_name] = (curr_cos, curr_sin)
-    #
-    # return RopeDataProxy(batch_result, is_cos=True), RopeDataProxy(batch_result, is_cos=False)
+    batch_result: dict[Any, Any] = {}
+
+    for config_key, registered_groups in _ROPE_STATE.registry_summary.items():
+        if config_key not in _ROPE_STATE.static_cache:
+            continue
+        static_cos, static_sin = compute_cos_and_sin()
+
+        batch_result[config_key] = {}
+
+        for group_name, pos_tensor in pos_map.items():
+            if group_name not in registered_groups:
+                continue
+
+            curr_cos = static_cos[pos_tensor]
+            curr_sin = static_sin[pos_tensor]
+
+            if use_cache:
+                group_buffers = _ROPE_STATE.runtime_buffer.get(config_key, {}).get(group_name)
+
+                if group_buffers is None:
+                    continue
+
+                buf_cos, buf_sin = group_buffers
+                num_tokens = pos_tensor.size(0)
+
+                buf_cos[:num_tokens].copy_(curr_cos)
+                buf_sin[:num_tokens].copy_(curr_sin)
+
+                batch_result[config_key][group_name] = (buf_cos[:num_tokens], buf_sin[:num_tokens])
+            else:
+                batch_result[config_key][group_name] = (curr_cos, curr_sin)
+
+    return RopeDataProxy(batch_result, is_cos=True), RopeDataProxy(batch_result, is_cos=False)
 
 
 ROTARY_DIM = 0
