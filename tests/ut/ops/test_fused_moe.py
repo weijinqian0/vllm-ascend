@@ -370,6 +370,7 @@ class TestAscendUnquantizedFusedMoEMethod:
         layer.n_shared_experts = 0
         layer.moe_config = SimpleNamespace(num_logical_experts=None)
         layer.layer_id = 3
+        layer.hidden_size = 4
         layer.vllm_config = SimpleNamespace(model_config=SimpleNamespace(enable_return_routed_experts=False))
         return layer
 
@@ -456,6 +457,52 @@ class TestAscendUnquantizedFusedMoEMethod:
             assert fused_input.weights.w2 is layer.w2_weight
             assert fused_input.weights.w1_scale is None
             assert fused_input.weights.w2_scale is None
+
+    @pytest.mark.parametrize("moe_comm_type", [MoECommType.MC2, MoECommType.FUSED_MC2])
+    def test_apply_transposes_rl_weights(self, monkeypatch, moe_comm_type):
+        method = AscendUnquantizedFusedMoEMethod.__new__(AscendUnquantizedFusedMoEMethod)
+        method.moe = SimpleNamespace(has_bias=False)
+        method.dynamic_eplb = False
+        method.tid2eid = None
+        method.use_for_rl_weight_layout = True
+        layer = self._build_layer(has_bias=False)
+        original_w13 = layer.w13_weight.detach().clone()
+        original_w2 = layer.w2_weight.detach().clone()
+        hidden_states = torch.randn(2, 4, dtype=torch.float16)
+        router_logits = torch.randn(2, 4)
+        topk_weights = torch.tensor([[0.25, 0.75], [0.6, 0.4]], dtype=torch.float32)
+        topk_ids = torch.tensor([[0, 1], [1, 0]], dtype=torch.int64)
+        moe_comm_method = MagicMock()
+        moe_comm_method.fused_experts.return_value = torch.ones_like(hidden_states)
+        monkeypatch.setattr(
+            fused_moe_module,
+            "_EXTRA_CTX",
+            SimpleNamespace(moe_comm_type=moe_comm_type, moe_comm_method=moe_comm_method),
+        )
+        monkeypatch.setattr(fused_moe_module, "select_experts", MagicMock(return_value=(topk_weights, topk_ids)))
+        monkeypatch.setattr(fused_moe_module, "get_forward_context", MagicMock(return_value=MagicMock(input_ids=None)))
+
+        method.apply(
+            layer=layer,
+            x=hidden_states,
+            use_grouped_topk=False,
+            top_k=2,
+            router_logits=router_logits,
+            renormalize=True,
+            num_experts=4,
+        )
+
+        fused_input = moe_comm_method.fused_experts.call_args.kwargs["fused_experts_input"]
+        if moe_comm_type == MoECommType.FUSED_MC2:
+            w1 = fused_input.weights.w1[0]
+            w2 = fused_input.weights.w2[0]
+        else:
+            w1 = fused_input.weights.w1
+            w2 = fused_input.weights.w2
+        torch.testing.assert_close(w1, original_w13.transpose(1, 2).contiguous())
+        torch.testing.assert_close(w2, original_w2.transpose(1, 2).contiguous())
+        torch.testing.assert_close(layer.w13_weight, original_w13)
+        torch.testing.assert_close(layer.w2_weight, original_w2)
 
     def test_apply_adds_zero_expert_result_and_force_balances(self, monkeypatch):
         method = AscendUnquantizedFusedMoEMethod.__new__(AscendUnquantizedFusedMoEMethod)

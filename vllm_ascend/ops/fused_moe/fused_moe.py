@@ -95,6 +95,7 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
         super().__init__(moe=moe)
         self.dynamic_eplb = get_ascend_config().eplb_config.dynamic_eplb
         self.tid2eid = tid2eid
+        self.use_for_rl_weight_layout = False
 
     @property
     def is_monolithic(self) -> bool:
@@ -107,12 +108,12 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
 
     def process_weights_after_loading(self, layer):
         super(UnquantizedFusedMoEMethod, self).process_weights_after_loading(layer)
+        if not getattr(self, "use_for_rl_weight_layout", False):
+            w13_data = self._maybe_pad_weight(layer.w13_weight.data).transpose(1, 2).contiguous()
+            layer.w13_weight = torch.nn.Parameter(w13_data, requires_grad=False)
 
-        w13_data = self._maybe_pad_weight(layer.w13_weight.data).transpose(1, 2).contiguous()
-        layer.w13_weight = torch.nn.Parameter(w13_data, requires_grad=False)
-
-        w2_data = self._maybe_pad_weight(layer.w2_weight.data).transpose(1, 2).contiguous()
-        layer.w2_weight = torch.nn.Parameter(w2_data, requires_grad=False)
+            w2_data = self._maybe_pad_weight(layer.w2_weight.data).transpose(1, 2).contiguous()
+            layer.w2_weight = torch.nn.Parameter(w2_data, requires_grad=False)
 
         # TODO: Current dispatch_ffn_combine fusion operator ONLY supports NZ format.
         # Therefore, we must cast weights to NZ when fusion is enabled.
@@ -126,6 +127,13 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
         else:
             layer.w13_weight.data = maybe_trans_nz(layer.w13_weight.data)
             layer.w2_weight.data = maybe_trans_nz(layer.w2_weight.data)
+
+    def _maybe_transpose_rl_weight(self, weight: torch.Tensor, hidden_size: int, hidden_dim: int) -> torch.Tensor:
+        if not getattr(self, "use_for_rl_weight_layout", False):
+            return weight
+        if weight.shape[hidden_dim] != hidden_size:
+            return weight
+        return weight.transpose(1, 2).contiguous()
 
     def apply(
         self,
@@ -230,6 +238,16 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             w2_scale = None
             w1_scale_bias = None
             w2_scale_bias = None
+
+        if getattr(self, "use_for_rl_weight_layout", False):
+            w13_weight = self._maybe_transpose_rl_weight(layer.w13_weight, layer.hidden_size, 2)
+            w2_weight = self._maybe_transpose_rl_weight(layer.w2_weight, layer.hidden_size, 1)
+            if _EXTRA_CTX.moe_comm_type == MoECommType.FUSED_MC2:
+                w1 = [w13_weight]
+                w2 = [w2_weight]
+            else:
+                w1 = w13_weight
+                w2 = w2_weight
 
         final_hidden_states = moe_comm_method.fused_experts(
             fused_experts_input=build_fused_experts_input(
@@ -685,9 +703,9 @@ class AscendFusedMoE(FusedMoE):
         if self.dynamic_eplb:
             expert_tokens = fused_experts_results.expert_tokens
             group_list_type = fused_experts_results.group_list_type
-            assert expert_tokens is not None and group_list_type is not None, (
-                "expert_tokens and group_list_type should not be None when dynamic_eplb is enabled."
-            )
+            assert (
+                expert_tokens is not None and group_list_type is not None
+            ), "expert_tokens and group_list_type should not be None when dynamic_eplb is enabled."
             local_load = (
                 expert_tokens
                 if group_list_type == 1

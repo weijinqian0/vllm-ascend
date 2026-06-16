@@ -245,6 +245,32 @@ class TestNPUWorker(TestBase):
 
             mock_allocator.wake_up.assert_called_once_with(tags=["test_tag"])
 
+    @patch("vllm_ascend.worker.worker.CaMemAllocator")
+    @patch("vllm_ascend.worker.worker.get_ascend_config")
+    def test_wake_up_marks_unquantized_moe_for_rl(self, mock_get_config, mock_allocator_class):
+        """Test wake_up marks unquantized MoE weights for RL layout handling."""
+        from vllm_ascend.worker.worker import NPUWorker
+
+        mock_config = MagicMock()
+        mock_config.weight_nz_mode = 0
+        mock_get_config.return_value = mock_config
+        mock_allocator_class.get_instance.return_value = MagicMock()
+
+        quant_method = MagicMock(use_for_rl_weight_layout=False)
+        moe_module = MagicMock(quant_method=quant_method)
+        model = MagicMock()
+        model.modules.return_value = [MagicMock(quant_method=None), moe_module]
+
+        with patch.object(NPUWorker, "__init__", lambda x, **kwargs: None):
+            worker = NPUWorker()
+            worker.model_runner = MagicMock(model=model)
+            worker.vllm_config = MagicMock(quant_config=None)
+            worker._sleep_saved_buffers = {}
+
+            worker.wake_up(tags=["weights"])
+
+        assert quant_method.use_for_rl_weight_layout is True
+
     @patch("vllm_ascend.worker.worker.MemorySnapshot")
     @patch("vllm_ascend.worker.worker.NPUWorker._init_worker_distributed_environment")
     @patch("vllm_ascend.worker.worker.init_device_properties_triton")
