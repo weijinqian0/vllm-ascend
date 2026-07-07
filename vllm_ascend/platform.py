@@ -421,6 +421,7 @@ class NPUPlatform(Platform):
         if speculative_config is None:
             return False
 
+
         method = getattr(speculative_config, "method", None)
         return method is not None and "mtp" in str(method).lower()
 
@@ -504,9 +505,10 @@ class NPUPlatform(Platform):
 
         ascend_fusion_config = ascend_config.ascend_fusion_config
         if ascend_fusion_config:
-            vllm_config.additional_config.setdefault("ascend_fusion_config", {}).update(
+            (vllm_config.additional_config.setdefault("ascend_fusion_config", {})
+            .update(
                 vars(ascend_fusion_config) if not isinstance(ascend_fusion_config, dict) else ascend_fusion_config
-            )
+            ))
 
         enforce_eager = getattr(model_config, "enforce_eager", False)
 
