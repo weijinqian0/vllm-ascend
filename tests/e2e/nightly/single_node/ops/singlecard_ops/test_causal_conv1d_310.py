@@ -79,9 +79,9 @@ def test_ascend_causal_conv1d_310_fn(
         weight_origin,
         bias=bias,
         conv_states=conv_states_origin,
-        query_start_loc=query_start_loc.to(torch.int64),
-        cache_indices=cache_indices.to(torch.int64),
-        initial_state_mode=has_initial_state_tensor.to(torch.int64),
+        query_start_loc=query_start_loc,
+        cache_indices=cache_indices,
+        initial_state_mode=has_initial_state_tensor,
         num_accepted_tokens=None,
         activation_mode=activation_mode,
         pad_slot_id=PAD_SLOT_ID,
@@ -97,8 +97,8 @@ def test_ascend_causal_conv1d_310_fn(
 @pytest.mark.parametrize("has_bias", [False, True])
 @pytest.mark.parametrize("seqlen", [1, 3])
 @pytest.mark.parametrize("width", [4])
-@pytest.mark.parametrize("dim", [2048, 4096])
-@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("dim", [2048, 4096, 8192])
+@pytest.mark.parametrize("batch_size", [4, 8, 16, 32, 64])
 def test_causal_conv1d_310_update(batch_size, dim, width, seqlen, has_bias, silu_activation, itype):
     device = "npu"
     # total_entries = number of cache line
@@ -132,7 +132,7 @@ def test_causal_conv1d_310_update(batch_size, dim, width, seqlen, has_bias, silu
         bias=bias,
         conv_states=conv_states_origin,
         query_start_loc=None,
-        cache_indices=conv_state_indices.to(torch.int64),
+        cache_indices=conv_state_indices,
         initial_state_mode=None,
         num_accepted_tokens=None,
         activation_mode=activation_mode,

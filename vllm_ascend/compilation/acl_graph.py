@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import dataclasses
+import weakref
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -22,6 +23,27 @@ from vllm.platforms import current_platform
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 
 from ..utils import weak_ref_tensors
+
+_acl_graph_wrappers: weakref.WeakSet[Any] = weakref.WeakSet()
+_STREAM_RESOURCE_ERROR_CODE = "207008"
+_STREAM_RESOURCE_ERROR_MARKERS = (
+    "insufficient_stream_resources",
+    "stream resources are insufficient",
+)
+_OLD_HDK_CAPTURE_ERROR_MARKERS = ("alloc sq cq fail",)
+
+
+def _is_stream_resource_capture_error(exc: RuntimeError) -> bool:
+    message = str(exc)
+    lowered_message = message.lower()
+    has_error_code = _STREAM_RESOURCE_ERROR_CODE in message
+    has_stream_resource_marker = any(marker in lowered_message for marker in _STREAM_RESOURCE_ERROR_MARKERS)
+    return has_stream_resource_marker or (has_error_code and "stream resource" in lowered_message)
+
+
+def _is_old_hdk_capture_error(exc: RuntimeError) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in _OLD_HDK_CAPTURE_ERROR_MARKERS)
 
 
 @dataclasses.dataclass
@@ -92,6 +114,7 @@ class ACLGraphWrapper:
         self.concrete_aclgraph_entries: dict[BatchDescriptor, ACLGraphEntry] = {}
         self.enable_enpu = enable_enpu
         self.use_eagle = use_eagle
+        _acl_graph_wrappers.add(self)
 
     def __getattr__(self, key: str):
         # allow accessing the attributes of the runnable.
@@ -153,18 +176,48 @@ class ACLGraphWrapper:
                     stack.enter_context(patch("torch.npu.empty_cache", lambda: None))
 
                 # mind-exploding: carefully manage the reference and memory.
+
+                # Sync offloader's copy stream before capture.
+                # Ensure any pre-capture prefetches from offloader are complete.
+                from vllm.model_executor.offloader.base import get_offloader
+
+                get_offloader().sync_prev_onload()
                 forward_context.capturing = True
-                with torch.npu.graph(aclgraph, pool=self.graph_pool):
-                    # `output` is managed by pytorch's aclgraph pool
-                    output = self.runnable(*args, **kwargs)
-                    if self.aclgraph_options.weak_ref_output:
-                        # by converting it to weak ref,
-                        # the original `output` will immediately be released
-                        # to save memory. It is only safe to do this for
-                        # the last graph in piecewise aclgraph mode, because
-                        # the output of the last graph will not be used by
-                        # any other acl graph.
-                        output = weak_ref_tensors(output)
+                try:
+                    with torch.npu.graph(aclgraph, pool=self.graph_pool):
+                        # `output` is managed by pytorch's aclgraph pool
+                        output = self.runnable(*args, **kwargs)
+                        # Join offloader's copy stream after forward to avoid
+                        # unjoined stream error. The last layer's start_prefetch
+                        # forks copy_stream, but wait_prefetch only happens in
+                        # the next forward pass.
+                        get_offloader().join_after_forward()
+                        if self.aclgraph_options.weak_ref_output:
+                            # by converting it to weak ref,
+                            # the original `output` will immediately be released
+                            # to save memory. It is only safe to do this for
+                            # the last graph in piecewise aclgraph mode, because
+                            # the output of the last graph will not be used by
+                            # any other acl graph.
+                            output = weak_ref_tensors(output)
+                except RuntimeError as exc:
+                    if _is_old_hdk_capture_error(exc):
+                        raise RuntimeError(
+                            "ACL graph capture failed with an old Ascend HDK/CANN stack "
+                            "signature (`Alloc sq cq fail`). Please upgrade Ascend HDK to "
+                            "25.5.1 or later and use the matching CANN stack.\n"
+                            f"Original error:\n{exc}"
+                        ) from exc
+                    elif _is_stream_resource_capture_error(exc):
+                        raise RuntimeError(
+                            "ACL graph capture failed with a known stream-resource exhaustion "
+                            "signature. Consider reducing cudagraph_capture_sizes, lowering "
+                            "max_cudagraph_capture_size, preferring FULL or FULL_DECODE_ONLY for "
+                            "mostly uniform decode workloads, or temporarily disabling graph mode "
+                            "to confirm the failure is capture-related.\n"
+                            f"Original error:\n{exc}"
+                        ) from exc
+                    raise
 
             # here we always use weak ref for the workspaces
             # to save memory
@@ -244,19 +297,6 @@ def update_full_graph_params(
         draft_attn_metadatas,
     )
 
-    from vllm_ascend.ops.gdn import update_conv1d_graph_params
-
-    # For GDN Attention: AscendC operate(conv1d update) update graph params
-    # No patch can be loaded, update method call is temporarily placed here
-    update_conv1d_graph_params(
-        update_stream,
-        forward_context,
-        num_tokens,
-        vllm_config,
-        _EXTRA_CTX.is_draft_model,
-        draft_attn_metadatas,
-    )
-
 
 @dataclass
 class GraphParams:
@@ -264,9 +304,6 @@ class GraphParams:
     workspaces: dict[int, torch.Tensor]
     handles: dict[int, list[torch_npu._C._NPUTaskGroupHandle]]
     attn_params: dict[int, list[tuple]]
-    conv1d_params: dict[int, list[tuple]]  # for causal conv1d params
-    conv1d_handles: dict[int, list[torch_npu._C._NPUTaskGroupHandle]]  # for causal conv1d params handles
-    conv1d_events: dict[int, list[torch.npu.ExternalEvent]]  # for causal conv1d params events
 
 
 _graph_params: GraphParams | None = None
@@ -279,9 +316,6 @@ def set_graph_params(aclgraph_capture_sizes: list[int]):
     _graph_params = GraphParams(
         {size: [] for size in aclgraph_capture_sizes},
         {size: None for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
         {size: [] for size in aclgraph_capture_sizes},
         {size: [] for size in aclgraph_capture_sizes},
     )
@@ -309,9 +343,6 @@ def set_draft_graph_params(aclgraph_capture_sizes: list[int]):
         {size: None for size in aclgraph_capture_sizes},
         {size: [] for size in aclgraph_capture_sizes},
         {size: [] for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
     )
 
 
@@ -335,9 +366,6 @@ def set_draft_graph_prefill_params(aclgraph_capture_sizes: list[int]):
     _draft_graph_prefill_params = GraphParams(
         {size: [] for size in aclgraph_capture_sizes},
         {size: None for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
-        {size: [] for size in aclgraph_capture_sizes},
         {size: [] for size in aclgraph_capture_sizes},
         {size: [] for size in aclgraph_capture_sizes},
     )

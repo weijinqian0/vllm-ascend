@@ -143,6 +143,7 @@ class TestAscendSFACPMetadataBuilder(TestBase):
 
     def _build_builder(self, pcp_size=2, dcp_size=2):
         kv_cache_spec = MagicMock()
+        kv_cache_spec.block_size = 128
         layer_names = ["layer1", "layer2"]
         vllm_config = self._make_vllm_config()
         device = torch.device("cpu")
@@ -736,7 +737,7 @@ class TestAscendSFACPImpl(TestBase):
             torch.ops._C_ascend,
             "npu_sparse_flash_attention",
             create=True,
-            return_value=torch.randn(2, 4, 32),
+            return_value=(torch.randn(2, 4, 32), None, None),
         ) as mock_sfa:
             result = self.impl._execute_sparse_flash_attention(
                 ql_nope, q_pe, kv, key_rope, block_table, topk_indices, actual_seq_lengths_query, actual_seq_lengths_key
@@ -828,7 +829,7 @@ class TestAscendSFACPImpl(TestBase):
             torch.ops._C_ascend,
             "npu_lightning_indexer",
             create=True,
-            return_value=torch.tensor([[0]]),
+            return_value=(torch.tensor([[0]]), None),
         ) as mock_indexer:
             result = self.impl._execute_indexer_select(
                 q, key, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table
@@ -880,9 +881,9 @@ class TestAscendSFACPImpl(TestBase):
         mock_super.assert_called_once()
         self.assertEqual(result, ("a", "b"))
 
-    @patch("vllm_ascend.attention.context_parallel.sfa_cp.torch_npu")
+    @patch("vllm_ascend.attention.context_parallel.sfa_cp.DeviceOperator.reshape_and_cache")
     @patch_distributed_groups(dcp_size=1, pcp_size=2, needs_mocks=False)
-    def test_exec_kv_with_pcp(self, mock_torch_npu):
+    def test_exec_kv_with_pcp(self, mock_reshape_and_cache):
         self.impl.pcp_size = 2
         # Configure dimensions
         self.impl.kv_lora_rank = 32
@@ -909,7 +910,7 @@ class TestAscendSFACPImpl(TestBase):
 
         result = self.impl.exec_kv(kv_no_split, cos, sin, kv_cache, slots, attn_metadata)
         self.assertEqual(result, (None, None))
-        mock_torch_npu._npu_reshape_and_cache.assert_called_once()
+        mock_reshape_and_cache.assert_called_once()
 
     @patch_distributed_groups(dcp_size=1, pcp_size=1, needs_mocks=False)
     def test_execute_sparse_flash_attention_process_decode_only(self):
@@ -940,7 +941,7 @@ class TestAscendSFACPImpl(TestBase):
             torch.ops._C_ascend,
             "npu_sparse_flash_attention",
             create=True,
-            return_value=torch.randn(2, 4, 32),
+            return_value=(torch.randn(2, 4, 32), None, None),
         ):
             result = self.impl._execute_sparse_flash_attention_process(
                 ql_nope, q_pe, kv_cache, topk_indices, attn_metadata, actual_seq_lengths_query, actual_seq_lengths_key
@@ -980,7 +981,7 @@ class TestAscendSFACPImpl(TestBase):
             torch.ops._C_ascend,
             "npu_sparse_flash_attention",
             create=True,
-            return_value=torch.randn(4, 4, 32),
+            return_value=(torch.randn(4, 4, 32), None, None),
         ):
             result = self.impl._execute_sparse_flash_attention_process(
                 ql_nope, q_pe, kv_cache, topk_indices, attn_metadata, actual_seq_lengths_query, actual_seq_lengths_key
@@ -1027,7 +1028,7 @@ class TestAscendSFACPImpl(TestBase):
                 torch.ops._C_ascend,
                 "npu_sparse_flash_attention",
                 create=True,
-                return_value=torch.randn(2, 4, 32),
+                return_value=(torch.randn(2, 4, 32), None, None),
             ),
             patch("vllm_ascend.attention.context_parallel.sfa_cp.get_forward_context") as mock_fc,
         ):
@@ -1074,7 +1075,7 @@ class TestAscendSFACPImpl(TestBase):
         actual_seq_lengths_key = torch.tensor([4, 8, 8], dtype=torch.int32)
 
         def fake_sfa(query, **kwargs):
-            return torch.randn(query.shape[0], query.shape[1], query.shape[2])
+            return torch.randn(query.shape[0], query.shape[1], query.shape[2]), None, None
 
         with (
             patch.object(
@@ -1120,9 +1121,9 @@ class TestAscendSFACPImpl(TestBase):
         actual_seq_lengths_query = torch.tensor([1, 3], dtype=torch.int32)
         actual_seq_lengths_key = torch.tensor([4, 8], dtype=torch.int32)
 
-        # Use side_effect so each call returns a tensor with the q-shape
+        # Use side_effect so each call returns attention_out with the q-shape.
         def fake_sfa(query, **kwargs):
-            return torch.randn(query.shape[0], query.shape[1], query.shape[2])
+            return torch.randn(query.shape[0], query.shape[1], query.shape[2]), None, None
 
         with patch.object(
             torch.ops._C_ascend,
@@ -1180,7 +1181,7 @@ class TestAscendSFACPImpl(TestBase):
             torch.ops._C_ascend,
             "npu_lightning_indexer",
             create=True,
-            return_value=torch.tensor([[0]] * 2),
+            return_value=(torch.tensor([[0]] * 2), None),
         ):
             result = self.impl.indexer_select_post_process(
                 x, q_c, kv_cache, attn_metadata, cos, sin, actual_seq_lengths_query, actual_seq_lengths_key
@@ -1232,7 +1233,7 @@ class TestAscendSFACPImpl(TestBase):
             torch.ops._C_ascend,
             "npu_lightning_indexer",
             create=True,
-            return_value=torch.tensor([[0]] * 2),
+            return_value=(torch.tensor([[0]] * 2), None),
         ):
             result = self.impl.indexer_select_post_process(
                 x, q_c, kv_cache, attn_metadata, cos, sin, actual_seq_lengths_query, actual_seq_lengths_key
@@ -1286,7 +1287,7 @@ class TestAscendSFACPImpl(TestBase):
             torch.ops._C_ascend,
             "npu_lightning_indexer",
             create=True,
-            return_value=torch.tensor([[0]] * 2),
+            return_value=(torch.tensor([[0]] * 2), None),
         ):
             result = self.impl.indexer_select_post_process(
                 x, q_c, kv_cache, attn_metadata, cos, sin, actual_seq_lengths_query, actual_seq_lengths_key
@@ -1340,7 +1341,7 @@ class TestAscendSFACPImpl(TestBase):
 
         def fake_indexer(query, **kwargs):
             call_counter[0] += 1
-            return torch.tensor([[0]] * query.shape[0])
+            return torch.tensor([[0]] * query.shape[0]), None
 
         with patch.object(
             torch.ops._C_ascend,
@@ -1404,7 +1405,7 @@ class TestAscendSFACPImpl(TestBase):
         actual_seq_lengths_key = torch.tensor([4, 8], dtype=torch.int32)
 
         def fake_indexer(query, **kwargs):
-            return torch.tensor([[0]] * query.shape[0])
+            return torch.tensor([[0]] * query.shape[0]), None
 
         with patch.object(
             torch.ops._C_ascend,
@@ -1468,7 +1469,7 @@ class TestAscendSFACPImpl(TestBase):
         actual_seq_lengths_key = torch.tensor([4, 8, 8], dtype=torch.int32)
 
         def fake_indexer(query, **kwargs):
-            return torch.tensor([[0]] * query.shape[0])
+            return torch.tensor([[0]] * query.shape[0]), None
 
         with patch.object(
             torch.ops._C_ascend,

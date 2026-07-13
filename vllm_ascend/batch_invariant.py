@@ -83,6 +83,15 @@ def override_envs_for_invariance():
     os.environ["HCCL_DETERMINISTIC"] = "strict"
     os.environ["LCCL_DETERMINISTIC"] = "1"
 
+    # Enable deterministic computation for operators. Some operators on Ascend A5
+    # do not have deterministic mode enabled by default and must be explicitly set.
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+    logger.debug(
+        "Batch-invariant env override: weight_nz_mode=0, enable_matmul_allreduce=False, "
+        "HCCL_DETERMINISTIC=strict, LCCL_DETERMINISTIC=1, use_deterministic_algorithms=True",
+    )
+
 
 _batch_invariant_LIB = None
 
@@ -90,6 +99,11 @@ _batch_invariant_LIB = None
 def enable_batch_invariant_mode():
     global _batch_invariant_LIB
     _batch_invariant_LIB = torch.library.Library("aten", "IMPL")
+    logger.debug(
+        "Batch-invariant op registration: Triton=%s, AscendC=%s",
+        HAS_TRITON,
+        HAS_ASCENDC_BATCH_INVARIANT,
+    )
 
     # Register operators only implemented in triton.
     if HAS_TRITON:

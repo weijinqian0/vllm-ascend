@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 import torch_npu
 from vllm.config import CompilationMode, get_current_vllm_config
-from vllm.distributed import get_ep_group
+from vllm.logger import logger
 from vllm.utils.math_utils import cdiv
 
 from vllm_ascend.ascend_config import get_ascend_config
@@ -70,17 +70,22 @@ class AscendW8A8MXFP8DynamicLinearMethod(AscendLinearScheme):
     def apply(
         self,
         layer: torch.nn.Module,
-        x: torch.Tensor,
+        x: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
         bias: torch.Tensor | None = None,
         tp_rank: int | None = 0,
     ) -> torch.Tensor:
-        # reshape x for Qwen VL models
-        original_shape = x.shape
-        if x.dim() > 2:
-            x = x.view(-1, x.shape[-1])
-        quantized_x, dynamic_scale = torch_npu.npu_dynamic_mx_quant(x, dst_type=torch.float8_e4m3fn)
-        pertoken_scale = dynamic_scale
-        output_dtype = x.dtype
+        if isinstance(x, tuple):
+            quantized_x, pertoken_scale = x
+            original_shape = quantized_x.shape
+            output_dtype = torch.bfloat16
+        else:
+            # reshape x for Qwen VL models
+            original_shape = x.shape
+            if x.dim() > 2:
+                x = x.view(-1, x.shape[-1])
+            quantized_x, pertoken_scale = torch_npu.npu_dynamic_mx_quant(x, dst_type=torch.float8_e4m3fn)
+            output_dtype = x.dtype
+
         if bias is not None and bias.dtype != torch.float32:
             bias = bias.to(torch.float32)
 
@@ -133,8 +138,8 @@ class AscendW8A8MXFP8DynamicLinearMethod(AscendLinearScheme):
             layer.weight_scale.data = layer.weight_scale.data.reshape(n_dim, k_dim // 2 + 1, 2)
         else:
             layer.weight_scale.data = layer.weight_scale.data.reshape(n_dim, k_dim // 2, 2)
-        layer.weight.data = layer.weight.data.transpose(0, 1)
-        layer.weight_scale.data = layer.weight_scale.data.transpose(0, 1)
+        layer.weight.data = layer.weight.data.transpose(0, 1).contiguous()
+        layer.weight_scale.data = layer.weight_scale.data.transpose(0, 1).contiguous()
 
         # Mark as transformed
         layer._mxfp8_transformed = True
@@ -159,10 +164,13 @@ class AscendW8A8MXFP8DynamicLinearMethod(AscendLinearScheme):
             return
 
         if not hasattr(layer, "_mxfp8_original_shapes"):
-            raise RuntimeError(
-                "Cannot restore weights: original shapes not recorded. "
+            err_msg = (
+                "[vllm-ascend/W8A8_MXFP8] Cannot restore weights: original "
+                "shapes not recorded. "
                 "This should not happen if process_weights_after_loading was called first."
             )
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
         orig_shapes = layer._mxfp8_original_shapes
         orig_scale_shape = orig_shapes["weight_scale"]
@@ -176,7 +184,7 @@ class AscendW8A8MXFP8DynamicLinearMethod(AscendLinearScheme):
         # Current shape: (k_dim//2, n_dim, 2)
         # Target shape: (n_dim, k_dim)
         target_scale = layer.weight_scale.data.transpose(0, 1).reshape(orig_scale_shape).contiguous()
-        layer.weight_scale.data = layer.weight_scale.data.transpose(0, 1).view(orig_scale_shape)
+        layer.weight_scale.data = layer.weight_scale.data.transpose(0, 1).reshape(orig_scale_shape)
         layer.weight_scale.data.copy_(target_scale)
 
         # Mark as not transformed (ready for weight loading)
@@ -185,14 +193,13 @@ class AscendW8A8MXFP8DynamicLinearMethod(AscendLinearScheme):
 
 @register_scheme("W8A8_MXFP8", "moe")
 class AscendW8A8MXFP8DynamicFusedMoEMethod(AscendMoEScheme):
-    """FusedMoe method for Ascend W8A8_DYNAMIC."""
+    """FusedMoe method for Ascend W8A8_MXFP8."""
 
     model_dtype = None
-    quant_type: QuantType = QuantType.MXFP8
+    quant_type: QuantType = QuantType.W8A8MXFP
 
     def __init__(self):
         ensure_mxfp8_moe_available("W8A8_MXFP8 MoE quantization")
-        self.ep_group = get_ep_group()
 
         vllm_config = get_current_vllm_config()
         self.group_size = vllm_config.quant_config.quant_description.get("group_size", 32)
@@ -392,10 +399,13 @@ class AscendW8A8MXFP8DynamicFusedMoEMethod(AscendMoEScheme):
             return
 
         if not hasattr(layer, "_mxfp8_original_shapes"):
-            raise RuntimeError(
-                "Cannot restore weights: original shapes not recorded. "
+            err_msg = (
+                "[vllm-ascend/W8A8_MXFP8] Cannot restore weights: original "
+                "shapes not recorded. "
                 "This should not happen if process_weights_after_loading was called first."
             )
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
         orig_shapes = layer._mxfp8_original_shapes
 
