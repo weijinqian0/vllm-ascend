@@ -71,6 +71,42 @@ def test_kv_cache_load_makes_seq_lens_contiguous():
     assert mock_gather.call_args.kwargs["value"] is value
 
 
+def test_a5_reshape_and_cache_uses_base_scatter_impl():
+    key = torch.randn(2, 3, 4).transpose(0, 1)
+    value = torch.randn(2, 3, 4).transpose(0, 1)
+    slot_mapping = torch.arange(8, dtype=torch.int32)[::2]
+    key_cache = object()
+    value_cache = object()
+
+    with (
+        mock.patch("vllm_ascend.device.device_op.torch_npu.npu_scatter_pa_kv_cache") as mock_scatter,
+        mock.patch("vllm_ascend.device.device_op.torch_npu._npu_reshape_and_cache") as mock_reshape_and_cache,
+    ):
+        A5DeviceAdaptor.reshape_and_cache(
+            key=key,
+            value=value,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            slot_mapping=slot_mapping,
+        )
+
+    mock_scatter.assert_called_once()
+    call_kwargs = mock_scatter.call_args.kwargs
+    assert call_kwargs["key"] is not key
+    assert call_kwargs["value"] is not value
+    assert call_kwargs["slot_mapping"] is not slot_mapping
+    assert call_kwargs["key"].is_contiguous()
+    assert call_kwargs["value"].is_contiguous()
+    assert call_kwargs["slot_mapping"].is_contiguous()
+    torch.testing.assert_close(call_kwargs["key"], key)
+    torch.testing.assert_close(call_kwargs["value"], value)
+    torch.testing.assert_close(call_kwargs["slot_mapping"], slot_mapping)
+    assert call_kwargs["key_cache"] is key_cache
+    assert call_kwargs["value_cache"] is value_cache
+    assert call_kwargs["cache_mode"] == "Norm"
+    mock_reshape_and_cache.assert_not_called()
+
+
 def test_npu_flash_attention_uses_fusion_attention_for_fp32():
     query = torch.randn(5, 4, 64, dtype=torch.float32)
     key = torch.randn_like(query)
