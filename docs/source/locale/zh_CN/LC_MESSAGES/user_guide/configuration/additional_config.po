@@ -341,9 +341,8 @@ msgstr "`enable_shared_expert_dp`"
 #: ../../source/user_guide/configuration/additional_config.md
 msgid ""
 "When the expert is shared in DP, it delivers better performance but "
-"consumes more memory. Currently only DeepSeek series models are "
-"supported."
-msgstr "在数据并行中共享专家模型可提供更好的性能，但会消耗更多显存。目前仅支持 DeepSeek 系列模型。"
+"consumes more memory."
+msgstr "在数据并行中共享专家模型可提供更好的性能，但会消耗更多显存。"
 
 #: ../../source/user_guide/configuration/additional_config.md
 msgid "`multistream_overlap_shared_expert`"
