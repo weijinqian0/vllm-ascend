@@ -92,7 +92,6 @@ class AscendMultiHeadLatentAttention(MultiHeadLatentAttentionWrapper):
         self.prefix = prefix
         self.skip_topk = skip_topk
         hf_config = get_current_vllm_config().model_config.hf_text_config
-        self.enable_shared_expert_dp = get_ascend_config().enable_shared_expert_dp
         self.tp_size = get_tensor_model_parallel_world_size()
         self.layers = hf_config.num_hidden_layers
         if mla_modules.indexer is not None:
