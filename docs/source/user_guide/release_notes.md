@@ -75,6 +75,7 @@ The following features and optimizations were removed or continued through the d
 - **Kimi-K2.6 W4A8 P/D disaggregation**: Long-context and high-concurrency deployments can still show occasional output degradation. [#13002](https://github.com/vllm-project/vllm-ascend/issues/13002)
 - **Ascend 950 graph capture**: Graph capture can fail on incompatible HDK stacks. Use the documented HDK/CANN combination and follow the graph-capture mitigation guidance when this error appears. [#12998](https://github.com/vllm-project/vllm-ascend/issues/12998)
 - **Qwen3-32B W8A8C8 with Eagle3**: Some MTP/full-graph configurations can fail in `aclnnFusedInferAttentionScoreV3`. [#12956](https://github.com/vllm-project/vllm-ascend/issues/12956)
+- **GLM-5.2 with DCP**: Enabling DCP for GLM-5.2 can produce accuracy issues.
 
 ## v0.23.0rc1 - 2026.07.20
 
