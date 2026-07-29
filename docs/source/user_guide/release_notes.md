@@ -72,11 +72,9 @@ The following features and optimizations were removed or continued through the d
 
 ### Known Issues
 
-- Ascend 310P deployments can still hit model-specific startup, inference crash, or graph/speculative-decoding limitations in some Qwen3.x configurations. [#13050](https://github.com/vllm-project/vllm-ascend/issues/13050) [#12989](https://github.com/vllm-project/vllm-ascend/issues/12989) [#12985](https://github.com/vllm-project/vllm-ascend/issues/12985) [#12983](https://github.com/vllm-project/vllm-ascend/issues/12983)
-- Kimi-K2.6 W4A8 in long-context, high-concurrency P/D-disaggregated deployments can show occasional output degradation. [#13002](https://github.com/vllm-project/vllm-ascend/issues/13002)
-- Ascend 950 graph capture can fail on incompatible HDK stacks; use the documented HDK/CANN combination and follow the graph-capture mitigation guidance when this error appears. [#12998](https://github.com/vllm-project/vllm-ascend/issues/12998)
-- GLM5.1 W8A8 P2P and DRAM-cache paths can still show hang, OOM, or first-request garbled output in some multi-node and P/D-disaggregated deployments. [#12957](https://github.com/vllm-project/vllm-ascend/issues/12957) [#12933](https://github.com/vllm-project/vllm-ascend/issues/12933) [#12905](https://github.com/vllm-project/vllm-ascend/issues/12905)
-- Qwen3-32B W8A8C8 with Eagle3 can fail in `aclnnFusedInferAttentionScoreV3` for some MTP/full-graph configurations. [#12956](https://github.com/vllm-project/vllm-ascend/issues/12956)
+- **Kimi-K2.6 W4A8 P/D disaggregation**: Long-context and high-concurrency deployments can still show occasional output degradation. [#13002](https://github.com/vllm-project/vllm-ascend/issues/13002)
+- **Ascend 950 graph capture**: Graph capture can fail on incompatible HDK stacks. Use the documented HDK/CANN combination and follow the graph-capture mitigation guidance when this error appears. [#12998](https://github.com/vllm-project/vllm-ascend/issues/12998)
+- **Qwen3-32B W8A8C8 with Eagle3**: Some MTP/full-graph configurations can fail in `aclnnFusedInferAttentionScoreV3`. [#12956](https://github.com/vllm-project/vllm-ascend/issues/12956)
 
 ## v0.23.0rc1 - 2026.07.20
 
