@@ -78,10 +78,20 @@ def test_ascend_unquantized_skips_upstream_modular_kernel_init():
     assert method.maybe_make_prepare_finalize() is None
 
 
-def test_ascend_routed_experts_owns_unquantized_method():
+def test_ascend_routed_experts_owns_unquantized_method(monkeypatch):
     routed_experts = AscendRoutedExperts.__new__(AscendRoutedExperts)
     routed_experts.tid2eid = object()
     moe_config = MagicMock()
+    monkeypatch.setattr(
+        AscendUnquantizedFusedMoEMethod,
+        "dispatch_forward",
+        lambda self, compile_native=False: self.forward_native,
+    )
+    monkeypatch.setattr(
+        routed_experts_module,
+        "get_ascend_config",
+        lambda: SimpleNamespace(eplb_config=SimpleNamespace(dynamic_eplb=False)),
+    )
 
     method = routed_experts._get_quant_method("model.layers.0.mlp", None, moe_config)
 
@@ -115,8 +125,8 @@ def test_process_weights_after_loading_uses_version_specific_layout(
     original_w2 = layer.w2_weight.detach().clone()
     ascend_config = SimpleNamespace(enable_fused_mc2=False)
 
-    monkeypatch.setattr(fused_moe_module, "get_ascend_config", lambda: ascend_config)
-    monkeypatch.setattr(fused_moe_module, "maybe_trans_nz", lambda weight: weight)
+    monkeypatch.setattr(routed_experts_module, "get_ascend_config", lambda: ascend_config)
+    monkeypatch.setattr(routed_experts_module, "maybe_trans_nz", lambda weight: weight)
     upstream_method_base = AscendUnquantizedFusedMoEMethod.__mro__[2]
     monkeypatch.setattr(
         upstream_method_base,
@@ -145,15 +155,15 @@ def test_unquantized_apply_builds_current_fused_experts_input(monkeypatch, moe_c
     moe_comm_method.fused_experts.return_value = routed_out
 
     monkeypatch.setattr(
-        fused_moe_module,
+        routed_experts_module,
         "_EXTRA_CTX",
         SimpleNamespace(moe_comm_type=moe_comm_type, moe_comm_method=moe_comm_method),
     )
-    monkeypatch.setattr(fused_moe_module, "get_moe_num_logical_experts", lambda *args, **kwargs: 4)
-    monkeypatch.setattr(fused_moe_module, "get_forward_context", lambda: SimpleNamespace(input_ids=None))
-    monkeypatch.setattr(fused_moe_module, "get_current_vllm_config", lambda: None)
+    monkeypatch.setattr(routed_experts_module, "get_moe_num_logical_experts", lambda *args, **kwargs: 4)
+    monkeypatch.setattr(routed_experts_module, "get_forward_context", lambda: SimpleNamespace(input_ids=None))
+    monkeypatch.setattr(routed_experts_module, "get_current_vllm_config", lambda: None)
     select_experts = MagicMock(return_value=(topk_weights, topk_ids))
-    monkeypatch.setattr(fused_moe_module, "select_experts", select_experts)
+    monkeypatch.setattr(routed_experts_module, "select_experts", select_experts)
 
     result = method.apply(
         layer=layer,

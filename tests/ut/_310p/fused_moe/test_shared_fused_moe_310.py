@@ -29,10 +29,15 @@ def _build_weight_layer():
     )
 
 
-def test_routed_experts_310_owns_specialized_unquantized_method():
+def test_routed_experts_310_owns_specialized_unquantized_method(monkeypatch):
     routed_experts = AscendRoutedExperts310.__new__(AscendRoutedExperts310)
     routed_experts.tid2eid = object()
     moe_config = MagicMock()
+    monkeypatch.setattr(
+        AscendUnquantizedFusedMoEMethod310,
+        "dispatch_forward",
+        lambda self, compile_native=False: self.forward_native,
+    )
 
     method = routed_experts._get_quant_method("model.layers.0.mlp", None, moe_config)
 
