@@ -116,6 +116,17 @@ def test_ascend_routed_experts_passes_tid2eid_to_quant_config():
     )
 
 
+def test_ascend_routed_experts_accepts_tid2eid_parameter_before_module_init(monkeypatch):
+    tid2eid = nn.Parameter(torch.zeros(2, 2), requires_grad=False)
+    parent_init = MagicMock(side_effect=RuntimeError("stop after parent init"))
+    monkeypatch.setattr(routed_experts_module.RoutedExperts, "__init__", parent_init)
+
+    with pytest.raises(RuntimeError, match="stop after parent init"):
+        AscendRoutedExperts(tid2eid=tid2eid)
+
+    parent_init.assert_called_once()
+
+
 def test_process_weights_after_loading_uses_version_specific_layout(
     monkeypatch,
 ):

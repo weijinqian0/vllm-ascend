@@ -263,7 +263,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
     moe_counter = -1
 
     def __init__(self, *args, tid2eid=None, n_shared_experts: int = 0, **kwargs):
-        self.tid2eid = tid2eid
+        object.__setattr__(self, "tid2eid", tid2eid)
         super().__init__(*args, **kwargs)
         ascend_config = get_ascend_config()
         self.enable_npugraph_ex_static_kernel = ascend_config.ascend_compilation_config.enable_static_kernel
