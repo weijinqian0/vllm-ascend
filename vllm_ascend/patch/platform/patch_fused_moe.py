@@ -37,14 +37,27 @@ from vllm_ascend.utils import is_310p
 _original_FusedMoE = _fused_moe_layer.FusedMoE
 
 if is_310p():
-    from vllm_ascend._310p.fused_moe.fused_moe import AscendMoERunner310 as _DefaultAscendMoERunner
+    from vllm_ascend._310p.fused_moe.fused_moe import (
+        AscendMoERunner310 as _DefaultAscendMoERunner,
+        AscendRoutedExperts310 as _DefaultAscendRoutedExperts,
+    )
 else:
     from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner as _DefaultAscendMoERunner
+    from vllm_ascend.ops.fused_moe.routed_experts import AscendRoutedExperts as _DefaultAscendRoutedExperts
 
 
-def _ascend_FusedMoE(*args, runner_cls=None, runner_args=None, **kwargs):
+def _ascend_FusedMoE(
+    *args,
+    runner_cls=None,
+    runner_args=None,
+    routed_experts_cls=None,
+    routed_experts_args=None,
+    **kwargs,
+):
     if runner_cls is None:
         runner_cls = _DefaultAscendMoERunner
+    if routed_experts_cls is None:
+        routed_experts_cls = _DefaultAscendRoutedExperts
     # RoutedExperts allocates its parameters before AscendMoERunner is
     # constructed. Propagate Ascend EPLB capacity into the upstream factory so
     # redundant expert slots are present when weights are created and loaded.
@@ -59,13 +72,22 @@ def _ascend_FusedMoE(*args, runner_cls=None, runner_args=None, **kwargs):
         kwargs["enable_eplb"] = True
         kwargs["num_redundant_experts"] = configured_redundancy or upstream_redundancy
     # 'hash' is a DeepSeek V4 flag already consumed before FusedMoE is called;
-    # 'tid2eid' is Ascend-specific and must reach AscendMoERunner via runner_args.
+    # 'tid2eid' is Ascend-specific and belongs to AscendRoutedExperts.
     kwargs.pop("hash", None)
     tid2eid = kwargs.pop("tid2eid", None)
+    n_shared_experts = kwargs.get("n_shared_experts", 0)
+    routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}
+    routed_experts_args["n_shared_experts"] = n_shared_experts
     if tid2eid is not None:
-        runner_args = dict(runner_args) if runner_args is not None else {}
-        runner_args["tid2eid"] = tid2eid
-    return _original_FusedMoE(*args, runner_cls=runner_cls, runner_args=runner_args, **kwargs)
+        routed_experts_args["tid2eid"] = tid2eid
+    return _original_FusedMoE(
+        *args,
+        runner_cls=runner_cls,
+        runner_args=runner_args,
+        routed_experts_cls=routed_experts_cls,
+        routed_experts_args=routed_experts_args,
+        **kwargs,
+    )
 
 
 _fused_moe_layer.FusedMoE = _ascend_FusedMoE
