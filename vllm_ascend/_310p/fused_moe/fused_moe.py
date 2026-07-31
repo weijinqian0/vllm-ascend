@@ -147,19 +147,17 @@ class AscendMoERunner310(AscendMoERunner):
         n_shared_experts: int = 0,
     ):
         super().__init__(
-            layer_name,
-            moe_config,
-            router,
-            routed_experts,
-            enable_dbo,
-            gate,
-            shared_experts,
-            shared_expert_gate,
-            routed_input_transform,
-            routed_output_transform,
-            routed_scaling_factor,
-            tid2eid,
-            n_shared_experts,
+            layer_name=layer_name,
+            moe_config=moe_config,
+            router=router,
+            routed_experts=routed_experts,
+            enable_dbo=enable_dbo,
+            gate=gate,
+            shared_experts=shared_experts,
+            shared_expert_gate=shared_expert_gate,
+            routed_input_transform=routed_input_transform,
+            routed_output_transform=routed_output_transform,
+            routed_scaling_factor=routed_scaling_factor,
         )
 
         self.multistream_overlap_shared_expert = False

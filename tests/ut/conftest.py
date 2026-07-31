@@ -95,7 +95,7 @@ sys.modules.setdefault("mooncake.engine", mooncake_engine)
 
 build_info = types.ModuleType("vllm_ascend._build_info")
 build_info.__spec__ = importlib.util.spec_from_loader("vllm_ascend._build_info", loader=None)
-build_info.__device_type__ = "A2"
+setattr(build_info, "__device_type__", "A2")  # noqa: B010
 sys.modules.setdefault("vllm_ascend._build_info", build_info)
 
 from vllm_ascend.utils import (  # noqa: E402

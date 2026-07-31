@@ -272,7 +272,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         self.multi_stage = False
         self.load_counter = None
         self.num_iter = None
-        self.moe_load = None
+        self.moe_load: torch.Tensor | None = None
         self.ascend_expert_map = None
         self.log2phy = None
         self.global_redundant_expert_num = 0
@@ -392,6 +392,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         return self.moe_config.ep_rank
 
     def clear_moe_load(self) -> None:
+        assert self.moe_load is not None
         self.moe_load.zero_()
         if self.multi_stage:
             assert self.load_counter is not None

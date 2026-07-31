@@ -27,6 +27,8 @@
 #   2. from vllm_ascend import ops
 #   3. model loading  ->  deepseek_v2 imported  ->  gets patched FusedMoE  ✓
 
+from typing import Any
+
 import vllm.model_executor.layers.fused_moe as _fused_moe_pkg
 import vllm.model_executor.layers.fused_moe.layer as _fused_moe_layer
 
@@ -35,17 +37,20 @@ from vllm_ascend.utils import is_310p
 
 # Capture the real original before fused_moe.py's module-level code runs.
 _original_FusedMoE = _fused_moe_layer.FusedMoE
+_DefaultAscendMoERunner: Any
+_DefaultAscendRoutedExperts: Any
 
 if is_310p():
-    from vllm_ascend._310p.fused_moe.fused_moe import (
-        AscendMoERunner310 as _DefaultAscendMoERunner,
-    )
-    from vllm_ascend._310p.fused_moe.fused_moe import (
-        AscendRoutedExperts310 as _DefaultAscendRoutedExperts,
-    )
+    from vllm_ascend._310p.fused_moe.fused_moe import AscendMoERunner310, AscendRoutedExperts310
+
+    _DefaultAscendMoERunner = AscendMoERunner310
+    _DefaultAscendRoutedExperts = AscendRoutedExperts310
 else:
-    from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner as _DefaultAscendMoERunner
-    from vllm_ascend.ops.fused_moe.routed_experts import AscendRoutedExperts as _DefaultAscendRoutedExperts
+    from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner
+    from vllm_ascend.ops.fused_moe.routed_experts import AscendRoutedExperts
+
+    _DefaultAscendMoERunner = AscendMoERunner
+    _DefaultAscendRoutedExperts = AscendRoutedExperts
 
 
 def _ascend_FusedMoE(
