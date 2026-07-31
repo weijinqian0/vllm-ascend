@@ -39,6 +39,8 @@ _original_FusedMoE = _fused_moe_layer.FusedMoE
 if is_310p():
     from vllm_ascend._310p.fused_moe.fused_moe import (
         AscendMoERunner310 as _DefaultAscendMoERunner,
+    )
+    from vllm_ascend._310p.fused_moe.fused_moe import (
         AscendRoutedExperts310 as _DefaultAscendRoutedExperts,
     )
 else:

@@ -259,6 +259,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
     This keeps Ascend quant-method selection with the expert weight owner,
     matching upstream vLLM's RoutedExperts responsibility split.
     """
+
     moe_counter = -1
 
     def __init__(self, *args, tid2eid=None, n_shared_experts: int = 0, **kwargs):
