@@ -287,6 +287,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         self.global_redundant_expert_num = 0
         self.init_eplb(n_shared_experts)
         self.return_with_event = False
+        self.n_shared_experts = n_shared_experts
 
         vllm_config = get_current_vllm_config()
 
