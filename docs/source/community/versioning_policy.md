@@ -144,7 +144,6 @@ Usually, each minor version of vLLM (such as 0.7) corresponds to a vLLM Ascend v
 | Branch     | State        | Note                                                     |
 | ---------- | ------------ | -------------------------------------------------------- |
 | main       | Maintained   | CI commitment for vLLM main branch and vLLM {{main_vllm_tag}}  tag |
-| releases/v0.24.0rc | Maintained | CI commitment for vLLM 0.24.0 version                |
 | releases/v0.23.0 | Maintained | CI commitment for vLLM 0.23.0 version                |
 | releases/v0.18.0 | Maintained | CI commitment for vLLM 0.18.0 version                |
 | releases/v0.13.0 | Maintained | CI commitment for vLLM 0.13.0 version                |
