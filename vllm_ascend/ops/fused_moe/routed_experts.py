@@ -39,6 +39,7 @@ from vllm_ascend.ops.fused_moe.eplb import record_local_expert_load
 from vllm_ascend.ops.fused_moe.moe_utils import get_moe_num_logical_experts, zero_experts_compute
 from vllm_ascend.ops.fused_moe.moe_comm_method import AllGatherCommImpl, FusedExpertsResult
 from vllm_ascend.ops.fused_moe.moe_runtime_args import build_fused_experts_input
+from vllm_ascend.ops.fused_moe.moe_utils import get_moe_num_logical_experts, zero_experts_compute
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import ACL_FORMAT_FRACTAL_NZ, maybe_trans_nz
 
@@ -397,11 +398,11 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         """Return the global-to-local map used by Ascend MoE execution."""
         if getattr(self, "_use_v2_model_runner", False):
             return self.expert_map
-        return getattr(self, "_ascend_expert_map", None)
+        return getattr(self, "ascend_expert_map", None)
 
     @ascend_expert_map.setter
     def ascend_expert_map(self, expert_map: torch.Tensor | None) -> None:
-        object.__setattr__(self, "_ascend_expert_map", expert_map)
+        object.__setattr__(self, "ascend_expert_map", expert_map)
 
     def update_expert_map(self, new_expert_map: torch.Tensor | None = None) -> None:
         """Update the upstream map or preserve the legacy Ascend update API."""
