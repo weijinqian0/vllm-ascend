@@ -21,7 +21,6 @@ Run `pytest tests/ops/test_fused_moe.py`.
 """
 
 import gc
-from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
