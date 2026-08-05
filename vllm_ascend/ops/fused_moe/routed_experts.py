@@ -460,7 +460,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
                 if capturer is not None:
                     capturer.capture(layer_id=self.layer_id, topk_ids=topk_ids)
         except Exception as e:
-            logger.warning("Something went wrong.")
+            logger.warning("Failed to capture routed experts: %s", e)
 
         num_shared_experts = self.n_shared_experts
         if num_shared_experts is None:
