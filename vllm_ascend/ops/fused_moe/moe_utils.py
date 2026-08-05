@@ -164,3 +164,17 @@ def zero_experts_compute(
     expert_scales = torch.where(normal_expert_mask, 0.0, expert_scales)
 
     return expert_indices, expert_scales, result
+
+
+def get_moe_num_logical_experts(
+    layer: torch.nn.Module,
+    num_experts: int,
+    global_redundant_expert_num: int = 0,
+    num_shared_experts: int = 0,
+) -> int:
+    moe_config = getattr(layer, "moe_config", None)
+    num_logical_experts = getattr(moe_config, "num_logical_experts", None)
+    if num_logical_experts is not None:
+        return int(num_logical_experts)
+
+    return int(num_experts - global_redundant_expert_num - num_shared_experts)

@@ -36,10 +36,9 @@ from vllm_ascend.eplb.adaptor.vllm_adaptor import VllmEplbAdaptor
 from vllm_ascend.eplb.core.eplb_utils import init_eplb_config
 from vllm_ascend.lora.fused_moe import sync_lora_context
 from vllm_ascend.ops.fused_moe.eplb import record_local_expert_load
-from vllm_ascend.ops.fused_moe.moe_utils import zero_experts_compute
+from vllm_ascend.ops.fused_moe.moe_utils import get_moe_num_logical_experts, zero_experts_compute
 from vllm_ascend.ops.fused_moe.moe_comm_method import AllGatherCommImpl, FusedExpertsResult
 from vllm_ascend.ops.fused_moe.moe_runtime_args import build_fused_experts_input
-from vllm_ascend.quantization.methods.base import get_moe_num_logical_experts
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import ACL_FORMAT_FRACTAL_NZ, maybe_trans_nz
 
@@ -244,7 +243,6 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         vllm_config = get_current_vllm_config()
         self.n_shared_experts = n_shared_experts
         self.mix_placement = getattr(ascend_config, "mix_placement", False)
-        vllm_config = get_current_vllm_config()
         self.enable_npugraph_ex_static_kernel = ascend_config.ascend_compilation_config.enable_static_kernel
         self.enable_shared_expert_dp = ascend_config.enable_shared_expert_dp
         self._use_v2_model_runner = bool(vllm_config.use_v2_model_runner)
@@ -459,8 +457,8 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
                 capturer = getattr(self, "_ascend_routed_experts_capturer", None)
                 if capturer is not None:
                     capturer.capture(layer_id=self.layer_id, topk_ids=topk_ids)
-        except Exception:
-            logger.warning("Something went wrong.")
+        except Exception as e:
+            logger.warning("Failed to capture routed experts: %s", e)
 
         num_shared_experts = self.n_shared_experts
         if num_shared_experts is None:
