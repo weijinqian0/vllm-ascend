@@ -143,6 +143,8 @@ class TestAscendW4A8MXFP4MoEMethod(TestBase):
         layer.global_redundant_expert_num = 0
         layer.log2phy = None
         layer.ascend_mc2_mask = None
+        layer.swiglu_alpha = 1.0
+        layer.swiglu_beta = 0.0
         x = torch.randn(tokens, self.hidden_size, dtype=torch.bfloat16)
         topk_weights = torch.randn(tokens, 2)
         topk_ids = torch.randint(0, self.num_experts, (tokens, 2))

@@ -450,6 +450,8 @@ class TestAscendW4A8DynamicFusedMoEMethod(TestBase):
         layer.ascend_pertoken_scale = pertoken_scale
         layer.activation = "silu"
         layer.apply_router_weight_on_input = False
+        layer.swiglu_alpha = 1.0
+        layer.swiglu_beta = 0.0
 
         mock_fused_input = Mock()
         mock_fused_input.hidden_states = x
