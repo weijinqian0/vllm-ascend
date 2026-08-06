@@ -1,6 +1,5 @@
 from types import SimpleNamespace
 
-from vllm_ascend.ops.fused_moe.moe_utils import get_moe_num_logical_experts
 import pytest
 
 from vllm_ascend.ops.fused_moe.moe_utils import get_moe_num_logical_experts
