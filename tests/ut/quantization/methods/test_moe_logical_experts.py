@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from vllm_ascend.ops.fused_moe.moe_utils import get_moe_num_logical_experts
 import pytest
 
+from vllm_ascend.ops.fused_moe.moe_utils import get_moe_num_logical_experts
 from vllm_ascend.quantization.methods.base import AscendLinearScheme, AscendMoEScheme
 from vllm_ascend.quantization.methods.w4a4_mxfp4 import AscendW4A4MXFP4DynamicFusedMoEMethod
 from vllm_ascend.quantization.methods.w4a8 import AscendW4A8DynamicFusedMoEMethod
