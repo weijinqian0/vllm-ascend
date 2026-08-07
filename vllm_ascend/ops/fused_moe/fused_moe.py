@@ -27,7 +27,7 @@ from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.distributed.parallel_state import get_mc2_group
 from vllm_ascend.ops.fused_moe.moe_comm_method import setup_moe_comm_method
 from vllm_ascend.ops.fused_moe.routed_experts import AscendRoutedExperts
-from vllm_ascend.ops.fused_moe.shared_experts import AscendSharedExperts, FusedMoEEvents
+from vllm_ascend.ops.fused_moe.shared_experts import AscendSharedExperts
 from vllm_ascend.utils import vllm_version_is
 
 
