@@ -37,7 +37,7 @@ from vllm.logger import logger
 from vllm.sequence import IntermediateTensors
 
 import vllm_ascend.envs as envs_ascend
-from vllm_ascend._310p.fused_moe.fused_moe import AscendRoutedExperts310, AscendMoERunner310
+from vllm_ascend._310p.fused_moe.fused_moe import AscendMoERunner310, AscendRoutedExperts310
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner
 from vllm_ascend.ops.fused_moe.routed_experts import AscendRoutedExperts

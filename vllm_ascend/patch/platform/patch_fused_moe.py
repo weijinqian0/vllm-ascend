@@ -36,13 +36,11 @@ import torch
 import vllm.model_executor.layers.fused_moe as _fused_moe_pkg
 import vllm.model_executor.layers.fused_moe.layer as _fused_moe_layer
 from vllm.config import get_current_vllm_config
-from vllm.model_executor.layers.fused_moe.routed_experts import RoutedExperts
 from vllm.model_executor.layers.fused_moe.router.fused_moe_router import FusedMoERouter
 
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.distributed.eplb_state import AscendEplbLayerState
 from vllm_ascend.ops.fused_moe.router.router_factory import create_ascend_fused_moe_router
-from vllm_ascend.utils import is_310p
 
 _EPLB_ROUTER_ADAPTED = "_vllm_ascend_eplb_router_adapted"
 
