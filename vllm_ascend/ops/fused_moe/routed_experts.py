@@ -16,7 +16,6 @@
 #
 from collections.abc import Iterable
 from copy import copy
-from dataclasses import dataclass
 from types import SimpleNamespace
 
 import torch
