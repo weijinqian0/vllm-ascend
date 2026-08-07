@@ -25,6 +25,7 @@ from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.device.device_op import DeviceOperator
 from vllm_ascend.ops.activation import AscendSwigluOAIAndMul, AscendSwigluStepAndMul
 from vllm_ascend.ops.fused_moe.moe_runtime_args import MoEMlpComputeInput
+from vllm_ascend.ops.fused_moe.moe_utils import dynamic_eplb
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import (
     dispose_tensor,
@@ -44,8 +45,8 @@ def _custom_gmm_swiglu_enabled(fusion, activation=None):
     )
 
 
-def _gmm_swiglu_quant_fusion_enabled(use_mxfp_quant, fusion, dynamic_eplb, activation=None):
-    return (use_mxfp_quant or (fusion and not dynamic_eplb)) and (
+def _gmm_swiglu_quant_fusion_enabled(use_mxfp_quant, fusion, activation=None):
+    return (use_mxfp_quant or (fusion and not dynamic_eplb())) and (
         getattr(activation, "value", activation) != "swigluoai_uninterleave"
     )
 
@@ -133,7 +134,6 @@ def quant_apply_mlp(
     w1_offset: torch.Tensor | None = None,
     w2_offset: torch.Tensor | None = None,
     fusion: bool = False,
-    dynamic_eplb: bool = False,
     use_mxfp_quant: bool = False,
     mxfp_quant_dtype: QuantType | None = None,
     act_quant_type: torch.dtype = torch.float8_e4m3fn,
@@ -152,7 +152,6 @@ def quant_apply_mlp(
     use_gmm_swiglu_quant_fusion = _gmm_swiglu_quant_fusion_enabled(
         use_mxfp_quant,
         fusion,
-        dynamic_eplb,
         activation,
     )
     # GELU can't use the fused SwiGLU+quant ops below; fall back to the
@@ -194,7 +193,7 @@ def quant_apply_mlp(
 
     is_mc2 = _EXTRA_CTX.moe_comm_type == MoECommType.MC2
     if w1_scale_bias is None and w1_offset is None and is_mc2 and not is_gelu_activation:
-        if _custom_gmm_swiglu_enabled(fusion, dynamic_eplb, activation) and not use_mxfp_quant:
+        if _custom_gmm_swiglu_enabled(fusion, activation) and not use_mxfp_quant:
             # gmm1: gate_up_proj & act_fn: swiglu
             hidden_states, swiglu_out_scale, _ = torch.ops._C_ascend.grouped_matmul_swiglu_quant_weight_nz_tensor_list(
                 x=hidden_states,
@@ -373,11 +372,7 @@ def quant_apply_mlp(
                 group_list_type=group_list_type,
                 swiglu_limit=swiglu_limit,
             )
-        elif (
-            _custom_gmm_swiglu_enabled(fusion, dynamic_eplb, activation)
-            and not use_mxfp_quant
-            and not is_gelu_activation
-        ):
+        elif _custom_gmm_swiglu_enabled(fusion, activation) and not use_mxfp_quant and not is_gelu_activation:
             # gmm1: gate_up_proj & act_fn: swiglu
             hidden_states, swiglu_out_scale, _ = torch.ops._C_ascend.grouped_matmul_swiglu_quant_weight_nz_tensor_list(
                 x=hidden_states,
@@ -630,7 +625,6 @@ def unified_apply_mlp(*, mlp_compute_input: MoEMlpComputeInput) -> torch.Tensor:
     w2_offset = mlp_compute_input.weights.w2_offset
     activation = mlp_compute_input.activation
     need_trans = mlp_compute_input.need_trans
-    dynamic_eplb = mlp_compute_input.dynamic_eplb
     fusion = mlp_compute_input.fusion
     swiglu_limit = mlp_compute_input.swiglu_limit
     swiglu_alpha = mlp_compute_input.swiglu_alpha
@@ -692,7 +686,6 @@ def unified_apply_mlp(*, mlp_compute_input: MoEMlpComputeInput) -> torch.Tensor:
         w1_offset=w1_offset,
         w2_offset=w2_offset,
         fusion=fusion,
-        dynamic_eplb=dynamic_eplb,
         use_mxfp_quant=use_mxfp_quant,
         mxfp_quant_dtype=mxfp_quant_dtype,
         act_quant_type=act_quant_type,

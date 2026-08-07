@@ -19,7 +19,7 @@ from vllm_ascend.ops.fused_moe.routed_experts import (
 )
 from vllm_ascend.ops.fused_moe.router import fused_topk_router as fused_topk_router_module
 from vllm_ascend.ops.fused_moe.router.fused_topk_router import AscendFusedTopKRouter
-from vllm_ascend.ops.fused_moe.shared_experts import AscendSharedExperts
+from vllm_ascend.ops.fused_moe.shared_experts import AscendSharedExperts, FusedMoEEvents
 from vllm_ascend.quantization.quant_type import QuantType
 
 
@@ -522,8 +522,15 @@ def test_routed_experts_forward_impl_runs_current_flow(monkeypatch, return_with_
     )
 
     if return_with_event:
-        assert isinstance(result, FusedMoEResult)
-        assert result.routed_out is finalized
+        assert isinstance(result, tuple)
+        routed_output, fused_moe_events = result
+        assert routed_output is finalized
+        assert isinstance(fused_moe_events, FusedMoEEvents)
+        assert fused_moe_events.before_routed_experts is None
+        assert fused_moe_events.after_routed_experts is None
+        assert fused_moe_events.before_dispatch is None
+        assert fused_moe_events.before_gmm2 is None
+        assert fused_moe_events.before_combine is None
     else:
         assert result is finalized
     moe_comm_method.prepare.assert_called_once_with(

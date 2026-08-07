@@ -22,7 +22,7 @@ import torch.nn.functional as F
 import torch_npu
 from vllm.distributed import tensor_model_parallel_all_reduce
 from vllm.logger import logger
-from vllm.model_executor.layers.fused_moe import FusedMoEMethodBase, FusedMoEConfig
+from vllm.model_executor.layers.fused_moe import FusedMoEConfig, FusedMoEMethodBase
 
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType

@@ -349,7 +349,6 @@ class FusedMC2CommImpl(MoECommMethod):
     def _apply_cann_mega_moe(
         self,
         fused_experts_input: MoEFusedExpertsInput,
-        topk_ids: torch.Tensor,
     ):
         assert fused_experts_input.weights.w1_scale is not None
         assert fused_experts_input.weights.w2_scale is not None
@@ -401,7 +400,7 @@ class FusedMC2CommImpl(MoECommMethod):
 
         out, expert_tokens = self.mega_moe(
             fused_experts_input.hidden_states,
-            topk_ids.to(torch.int32),
+            fused_experts_input.topk_ids.to(torch.int32),
             fused_experts_input.topk_weights.to(torch.float32),
             weight1,
             weight2,
@@ -437,7 +436,7 @@ class FusedMC2CommImpl(MoECommMethod):
         expert_tokens = None
         if get_ascend_config().enable_fused_mc2 == 1:
             if _MEGA_MOE_SUPPORTED:
-                out, expert_tokens = self._apply_cann_mega_moe(fused_experts_input, topk_ids)
+                out, expert_tokens = self._apply_cann_mega_moe(fused_experts_input)
             else:
                 assert not (
                     fused_experts_input.weights.w1_scale_bias is None
