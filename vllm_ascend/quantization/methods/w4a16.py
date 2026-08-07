@@ -267,6 +267,7 @@ class AscendW4A16FusedMoEMethod(AscendMoEScheme):
                 w1=layer.w13_weight_packed,
                 w2=layer.w2_weight_packed,
                 quant_type=self.quant_type,
+                dynamic_eplb=self.dynamic_eplb,
                 expert_map=layer.ascend_expert_map,
                 global_redundant_expert_num=layer.global_redundant_expert_num,
                 mc2_mask=layer.ascend_mc2_mask,

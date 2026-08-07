@@ -50,6 +50,7 @@ def build_mlp_compute_input_fixture(
         fusion=False,
         activation="silu",
         need_trans=False,
+        dynamic_eplb=False,
     )
 
 

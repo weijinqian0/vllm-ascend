@@ -158,6 +158,7 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
                 w1_bias=layer.w13_bias if self.moe.has_bias else None,
                 w2_bias=layer.w2_bias if self.moe.has_bias else None,
                 quant_type=QuantType.NONE,
+                dynamic_eplb=self.dynamic_eplb,
                 expert_map=layer.ascend_expert_map,
                 global_redundant_expert_num=layer.global_redundant_expert_num,
                 mc2_mask=layer.ascend_mc2_mask,

@@ -121,6 +121,7 @@ def build_fused_experts_input(
     w1: torch.Tensor | list[torch.Tensor],
     w2: torch.Tensor | list[torch.Tensor],
     quant_type: QuantType,
+    dynamic_eplb: bool,
     expert_map: torch.Tensor | None = None,
     global_redundant_expert_num: int = 0,
     mc2_mask: torch.Tensor | None = None,
@@ -183,6 +184,7 @@ def build_fused_experts_input(
         ),
         activation=activation,
         need_trans=need_trans,
+        dynamic_eplb=dynamic_eplb,
         quant=MoEQuantParams(
             quant_type=quant_type,
             comm_quant_mode=comm_quant_mode,
@@ -248,6 +250,7 @@ def build_mlp_compute_input(
         and use_fusion_ops,
         activation=fused_experts_input.activation,
         need_trans=fused_experts_input.need_trans,
+        dynamic_eplb=fused_experts_input.dynamic_eplb,
         swiglu_limit=fused_experts_input.swiglu_limit,
         swiglu_alpha=fused_experts_input.swiglu_alpha,
         swiglu_beta=fused_experts_input.swiglu_beta,

@@ -15,14 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from functools import lru_cache
 from importlib import import_module
 
 import torch
 import torch.distributed
 import torch.distributed as dist
 import torch_npu
-from vllm.config import get_current_vllm_config
 
 from vllm_ascend.quantization.quant_type import QuantType
 
@@ -156,13 +154,3 @@ def get_moe_num_logical_experts(
         return int(num_logical_experts)
 
     return int(num_experts - global_redundant_expert_num - num_shared_experts)
-
-
-@lru_cache(maxsize=1)
-def dynamic_eplb():
-    vllm_config = get_current_vllm_config()
-    if vllm_config is not None and vllm_config.use_v2_model_runner and vllm_config.parallel_config.enable_eplb:
-        return True
-    from vllm_ascend.ascend_config import get_ascend_config
-
-    return get_ascend_config().eplb_config.dynamic_eplb

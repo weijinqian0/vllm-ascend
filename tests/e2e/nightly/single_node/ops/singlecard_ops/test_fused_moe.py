@@ -246,6 +246,7 @@ def test_token_dispatcher_with_all_gather_quant(
             w2=w2,
             quant_type=QuantType.W8A8,
             expert_map=expert_map,
+            dynamic_eplb=False,
             w1_scale=w1_scale,
             w2_scale=w2_scale,
         ),
