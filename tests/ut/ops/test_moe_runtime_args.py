@@ -88,7 +88,7 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
-                    dynamic_eplb=False,
+                    dynamic_eplb=True,
                     expert_map=torch.tensor([0, 1, 2, 3], dtype=torch.int32),
                     global_redundant_expert_num=2,
                     mc2_mask=torch.tensor([True, False, True, False]),
@@ -124,6 +124,7 @@ class TestMoERuntimeArgs(unittest.TestCase):
             w1=w1,
             w2=w2,
             quant_type=QuantType.W8A8,
+            dynamic_eplb=False,
             w1_scale=w1_scale,
             w2_scale=w2_scale,
             w1_scale_bias=w1_scale_bias,
@@ -150,6 +151,7 @@ class TestMoERuntimeArgs(unittest.TestCase):
             w1=torch.randn(1, 4, 8),
             w2=torch.randn(1, 8, 4),
             quant_type=QuantType.NONE,
+            dynamic_eplb=False,
         )
 
         token_dispatch_input = build_token_dispatch_input(
@@ -174,6 +176,7 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
+                    dynamic_eplb=False,
                 )
 
     def test_build_mlp_compute_input_derives_fusion_and_preserves_mxfp_params(self):
@@ -191,6 +194,7 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
+                    dynamic_eplb=False,
                     mxfp_act_quant_type=mxfp_dtype,
                     mxfp_weight_quant_type=mxfp_dtype,
                     mxfp_scale_dtype=torch.float32,
@@ -241,6 +245,7 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
+                    dynamic_eplb=False,
                     mxfp_act_quant_type=mxfp_dtype,
                     mxfp_weight_quant_type=mxfp_dtype,
                     mxfp_scale_dtype=torch.float32,

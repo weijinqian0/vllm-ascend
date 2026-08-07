@@ -129,7 +129,7 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
             fusion=False,
             activation="silu",
             need_trans=False,
-            dynamic_eplb=False,
+            dynamic_eplb=True,
         )
 
         with (
