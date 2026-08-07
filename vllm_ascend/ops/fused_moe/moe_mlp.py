@@ -35,10 +35,10 @@ from vllm_ascend.utils import (
 ASCEND_DEVICE_TYPE = get_ascend_device_type()
 
 
-def _custom_gmm_swiglu_enabled(fusion, dynamic_eplb, activation=None):
+def _custom_gmm_swiglu_enabled(fusion, activation=None):
     return (
         fusion
-        and dynamic_eplb
+        and dynamic_eplb()
         and getattr(activation, "value", activation) != "swigluoai_uninterleave"
         and enable_custom_op()
     )

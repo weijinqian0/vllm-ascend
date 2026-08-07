@@ -49,9 +49,6 @@ class FusedMoEResult:
     before_dispatch_evt: torch.npu.Event | None = None
     before_gmm2_evt: torch.npu.Event | None = None
     before_combine_evt: torch.npu.Event | None = None
-    swiglu_limit: float = 0.0
-    swiglu_alpha: float = 1.0
-    swiglu_beta: float = 0.0
 
 
 class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
@@ -456,7 +453,8 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         router_logits: torch.Tensor,
         enable_force_load_balance: bool,
         input_ids: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if self.router is None:
             raise RuntimeError("AscendRoutedExperts requires a router for expert selection.")
 
@@ -486,7 +484,6 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
             global_redundant_expert_num=self.global_redundant_expert_num,
             num_shared_experts=num_shared_experts,
         )
-
         zero_expert_result = None
         zero_expert_num = getattr(self, "zero_expert_num", 0)
         zero_expert_type = getattr(self, "zero_expert_type", None)
@@ -496,14 +493,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
                 f"router_logits.shape[1]={router_logits.shape[1]}, "
                 f"num_logical_experts={num_logical_experts}"
             )
-        if zero_expert_num > 0 and zero_expert_type is not None:
-            topk_ids, topk_weights, zero_expert_result = zero_experts_compute(
-                expert_indices=topk_ids,
-                expert_scales=topk_weights,
-                num_experts=num_logical_experts,
-                zero_expert_type=zero_expert_type,
-                hidden_states=hidden_states,
-            )
+
 
         if getattr(self, "mix_placement", False):
             batch_size = topk_ids.shape[0]

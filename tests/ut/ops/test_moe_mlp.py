@@ -129,7 +129,6 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
             fusion=False,
             activation="silu",
             need_trans=False,
-            dynamic_eplb=False,
         )
 
         with (
@@ -175,7 +174,6 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
                     fusion=True,
                     activation="silu",
                     need_trans=False,
-                    dynamic_eplb=True,
                 )
 
                 with (
@@ -214,7 +212,6 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
             fusion=False,
             activation="silu",
             need_trans=False,
-            dynamic_eplb=False,
         )
 
         with (
@@ -360,7 +357,6 @@ class _GeluPathBase(unittest.TestCase):
             w1_offset=None,
             w2_offset=None,
             fusion=False,
-            dynamic_eplb=False,
             use_mxfp_quant=False,
             mxfp_quant_dtype=None,
             act_quant_type=torch.int8,

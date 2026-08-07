@@ -156,7 +156,6 @@ def _ascend_FusedMoE(
             scoring_func=scoring_func,
             routed_scaling_factor=routed_scaling_factor if not apply_routed_scale_to_output else 1.0,
             e_score_correction_bias=e_score_correction_bias,
-            zero_expert_type=zero_expert_type,
             num_logical_experts=num_experts,
             hash_indices_table=hash_indices_table,
             tid2eid=hash_indices_table_for_legacy_path,

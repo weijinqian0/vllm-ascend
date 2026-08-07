@@ -88,12 +88,10 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
-                    dynamic_eplb=True,
                     expert_map=torch.tensor([0, 1, 2, 3], dtype=torch.int32),
                     global_redundant_expert_num=2,
                     mc2_mask=torch.tensor([True, False, True, False]),
                     apply_router_weight_on_input=True,
-                    log2phy=torch.tensor([3, 2, 1, 0], dtype=torch.int32),
                     pertoken_scale=torch.randn(4),
                     activation="gelu",
                     mxfp_act_quant_type=_get_test_mxfp_dtype(quant_type),
@@ -125,7 +123,6 @@ class TestMoERuntimeArgs(unittest.TestCase):
             w1=w1,
             w2=w2,
             quant_type=QuantType.W8A8,
-            dynamic_eplb=False,
             w1_scale=w1_scale,
             w2_scale=w2_scale,
             w1_scale_bias=w1_scale_bias,
@@ -152,20 +149,16 @@ class TestMoERuntimeArgs(unittest.TestCase):
             w1=torch.randn(1, 4, 8),
             w2=torch.randn(1, 8, 4),
             quant_type=QuantType.NONE,
-            dynamic_eplb=False,
         )
-        routed_topk_ids = torch.tensor([[3], [2]], dtype=torch.int32)
 
         token_dispatch_input = build_token_dispatch_input(
             fused_experts_input=fused_experts_input,
-            topk_ids=routed_topk_ids,
         )
 
         self.assertIs(token_dispatch_input.hidden_states, fused_experts_input.hidden_states)
         self.assertIs(token_dispatch_input.topk_weights, fused_experts_input.topk_weights)
         self.assertIs(token_dispatch_input.routing, fused_experts_input.routing)
         self.assertIs(token_dispatch_input.quant, fused_experts_input.quant)
-        self.assertIs(token_dispatch_input.topk_ids, routed_topk_ids)
 
     def test_build_fused_experts_input_requires_primitive_mxfp_params_for_mxfp_quant(self):
         for quant_type in (QuantType.W8A8MXFP, QuantType.W4A4MXFP, QuantType.W4A8MXFP):
@@ -180,7 +173,6 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
-                    dynamic_eplb=False,
                 )
 
     def test_build_mlp_compute_input_derives_fusion_and_preserves_mxfp_params(self):
@@ -198,7 +190,6 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
-                    dynamic_eplb=False,
                     mxfp_act_quant_type=mxfp_dtype,
                     mxfp_weight_quant_type=mxfp_dtype,
                     mxfp_scale_dtype=torch.float32,
@@ -249,7 +240,6 @@ class TestMoERuntimeArgs(unittest.TestCase):
                     w1=torch.randn(2, 8, 16),
                     w2=torch.randn(2, 16, 8),
                     quant_type=quant_type,
-                    dynamic_eplb=False,
                     mxfp_act_quant_type=mxfp_dtype,
                     mxfp_weight_quant_type=mxfp_dtype,
                     mxfp_scale_dtype=torch.float32,

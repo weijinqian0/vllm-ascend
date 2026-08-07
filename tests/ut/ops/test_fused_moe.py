@@ -14,7 +14,6 @@ from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner
 from vllm_ascend.ops.fused_moe.routed_experts import (
     AscendRoutedExperts,
     AscendUnquantizedFusedMoEMethod,
-    FusedMoEResult,
     make_eplb_placement_config,
     use_multistage_eplb_load,
 )
@@ -37,8 +36,6 @@ def _build_apply_layer():
         w2_weight=nn.Parameter(torch.randn(4, 8, 3)),
         w13_bias=None,
         w2_bias=None,
-        zero_expert_num=0,
-        zero_expert_type=None,
         n_shared_experts=0,
         swiglu_limit=0.0,
         swiglu_alpha=1.0,
@@ -381,8 +378,7 @@ def test_routed_experts_select_experts_validates_router_logits(monkeypatch):
     routed_experts.moe_config = SimpleNamespace(num_experts=4)
     routed_experts.global_redundant_expert_num = 0
     routed_experts.n_shared_experts = 0
-    routed_experts.zero_expert_num = 0
-    routed_experts.zero_expert_type = None
+    monkeypatch.setattr(routed_experts_module, "get_forward_context", lambda: SimpleNamespace(input_ids=None))
     monkeypatch.setattr(routed_experts_module, "get_current_vllm_config", lambda: None)
 
     with pytest.raises(AssertionError, match="router_logits.shape\\[1\\]=3"):
