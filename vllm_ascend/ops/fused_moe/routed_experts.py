@@ -452,10 +452,8 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         enable_force_load_balance: bool,
         input_ids: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-    ) -> tuple[torch.Tensor, torch.Tensor]:
         if self.router is None:
             raise RuntimeError("AscendRoutedExperts requires a router for expert selection.")
-
         topk_weights, topk_ids = self.router._select_experts(
             hidden_states=hidden_states,
             router_logits=router_logits,
@@ -549,7 +547,8 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         mc2_mask = prepare_output.mc2_mask
         padded_hidden_states_shape = prepare_output.padded_hidden_states_shape
         pertoken_scale = prepare_output.pertoken_scale
-
+        if self.router is None:
+            raise RuntimeError("AscendRoutedExperts requires a router for expert selection.")
         topk_weights, topk_ids = self._select_experts(
             hidden_states=hidden_states,
             router_logits=router_logits,
