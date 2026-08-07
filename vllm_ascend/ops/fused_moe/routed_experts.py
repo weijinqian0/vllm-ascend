@@ -44,14 +44,6 @@ from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import ACL_FORMAT_FRACTAL_NZ, maybe_trans_nz
 
 
-@dataclass
-class FusedMoEResult:
-    routed_out: torch.Tensor
-    before_dispatch_evt: torch.npu.Event | None = None
-    before_gmm2_evt: torch.npu.Event | None = None
-    before_combine_evt: torch.npu.Event | None = None
-
-
 class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
     def __init__(self, moe: FusedMoEConfig = None, tid2eid=None):
         super().__init__(moe=moe)
