@@ -48,21 +48,6 @@ _EPLB_ROUTER_ADAPTED = "_vllm_ascend_eplb_router_adapted"
 
 # Capture the real original before fused_moe.py's module-level code runs.
 _original_FusedMoE = _fused_moe_layer.FusedMoE
-_DefaultAscendMoERunner: Any
-_DefaultAscendRoutedExperts: type[RoutedExperts]
-_IS_310P = is_310p()
-
-if _IS_310P:
-    from vllm_ascend._310p.fused_moe.fused_moe import AscendMoERunner310, AscendRoutedExperts310
-
-    _DefaultAscendMoERunner = AscendMoERunner310
-    _DefaultAscendRoutedExperts = AscendRoutedExperts310
-else:
-    from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner
-    from vllm_ascend.ops.fused_moe.routed_experts import AscendRoutedExperts
-
-    _DefaultAscendMoERunner = AscendMoERunner
-    _DefaultAscendRoutedExperts = AscendRoutedExperts
 
 
 def _ascend_apply_eplb_mapping(self, topk_ids: torch.Tensor) -> torch.Tensor:
@@ -121,10 +106,6 @@ def _ascend_FusedMoE(
     tid2eid: torch.Tensor | None = None,
     **kwargs,
 ):
-    if runner_cls is None:
-        runner_cls = _DefaultAscendMoERunner
-    if routed_experts_cls is None:
-        routed_experts_cls = _DefaultAscendRoutedExperts
     # RoutedExperts allocates its parameters before AscendMoERunner is
     # constructed. Propagate Ascend EPLB capacity into the upstream factory so
     # redundant expert slots are present when weights are created and loaded.
@@ -161,7 +142,6 @@ def _ascend_FusedMoE(
             eplb_state=AscendEplbLayerState() if enable_router_eplb else None,
         )
     routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}
-    routed_experts_args["router"] = router
     routed_experts_args["n_shared_experts"] = n_shared_experts
     if hash_indices_table_for_legacy_path is not None:
         routed_experts_args["tid2eid"] = hash_indices_table_for_legacy_path

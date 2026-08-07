@@ -37,7 +37,10 @@ from vllm.logger import logger
 from vllm.sequence import IntermediateTensors
 
 import vllm_ascend.envs as envs_ascend
+from vllm_ascend._310p.fused_moe.fused_moe import AscendRoutedExperts310, AscendMoERunner310
 from vllm_ascend.ascend_config import get_ascend_config
+from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner
+from vllm_ascend.ops.fused_moe.routed_experts import AscendRoutedExperts
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
@@ -729,6 +732,8 @@ def register_ascend_customop(vllm_config: VllmConfig | None = None):
         "CustomQwen2Decoder": AscendCustomQwen2Decoder,
         "GatedDeltaNetAttention": AscendGatedDeltaNetAttention,
         "BailingMoELinearAttention": AscendBailingMoELinearAttention,
+        "MoERunner": AscendMoERunner,
+        "RoutedExperts": AscendRoutedExperts,
     }
     if vllm_config is None:
         try:
@@ -772,6 +777,8 @@ def register_ascend_customop(vllm_config: VllmConfig | None = None):
                 "Conv3dLayer": AscendConv3dLayer310,
                 "GatedDeltaNetAttention": AscendGatedDeltaNetAttention310,
                 "MRotaryEmbedding": AscendMRotaryEmbedding310,
+                "MoERunner": AscendMoERunner310,
+                "RoutedExperts": AscendRoutedExperts310,
             }
         )
     for name, op_cls in REGISTERED_ASCEND_OPS.items():

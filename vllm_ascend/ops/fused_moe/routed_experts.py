@@ -25,7 +25,7 @@ from vllm.config import get_current_vllm_config
 from vllm.distributed.utils import is_weak_contiguous
 from vllm.forward_context import get_forward_context
 from vllm.logger import logger
-from vllm.model_executor.layers.fused_moe import RoutedExperts, SharedExperts
+from vllm.model_executor.layers.fused_moe import RoutedExperts, SharedExperts, FusedMoERouter
 from vllm.model_executor.layers.fused_moe.config import FusedMoEConfig
 from vllm.model_executor.layers.fused_moe.unquantized_fused_moe_method import UnquantizedFusedMoEMethod
 from vllm.model_executor.utils import replace_parameter
@@ -218,7 +218,6 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
     def __init__(
         self,
         *args,
-        router=None,
         tid2eid=None,
         n_shared_experts: int = 0,
         **kwargs,
@@ -234,7 +233,7 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
                     tid2eid=self.tid2eid,
                 )
             )
-        self.router = router
+        self.router: FusedMoERouter | None = None
         ascend_config = get_ascend_config()
         vllm_config = get_current_vllm_config()
         self.n_shared_experts = n_shared_experts
@@ -255,7 +254,6 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         if not self._use_v2_model_runner:
             self.init_eplb(n_shared_experts)
         self.return_with_event = False
-        self.n_shared_experts = n_shared_experts
 
         if (
             self.custom_routing_function is None
