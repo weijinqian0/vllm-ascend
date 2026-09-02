@@ -48,6 +48,27 @@ from vllm_ascend.device.hardware_profile import get_hardware_profile
 from vllm_ascend.utils import clear_enable_sp, enable_dsa_cp, enable_sp, shared_expert_dp_enabled
 
 
+_VllmConfig = VllmConfig
+
+
+def VllmConfig(*args, **kwargs):
+    """Build a test config with the model metadata required by AscendConfig."""
+    config = _VllmConfig(*args, **kwargs)
+    if config.model_config is None:
+        config.model_config = SimpleNamespace(
+            is_moe=False,
+            is_deepseek_mla=False,
+            use_mla=False,
+            enforce_eager=True,
+            architectures=[],
+            hf_text_config=SimpleNamespace(),
+            get_total_num_kv_heads=lambda: 0,
+            get_num_experts=lambda: 0,
+            get_hidden_size=lambda: 0,
+        )
+    return config
+
+
 def test_config_modules_do_not_load_vllm_config():
     """Keep platform discovery from recursing into a partial vllm.config."""
     code = (
@@ -108,6 +129,7 @@ class TestAscendConfig(TestBase):
         is_deepseek_mla: bool = False,
     ):
         return SimpleNamespace(
+            is_moe=False,
             is_deepseek_mla=is_deepseek_mla,
             use_mla=is_deepseek_mla,
             enforce_eager=True,
