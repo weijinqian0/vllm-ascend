@@ -1080,6 +1080,7 @@ class TestTopLevelSwitchTypeValidation(TestBase):
 
         supported_vc = VllmConfig()
         supported_vc.model_config = SimpleNamespace(
+            is_moe=False,
             hf_text_config=SimpleNamespace(index_topk=2048),
             hf_config=SimpleNamespace(),
             enforce_eager=True,
@@ -1177,7 +1178,12 @@ class TestTopLevelSwitchTypeValidation(TestBase):
     @patch("vllm_ascend.platform.NPUPlatform.check_and_update_config")
     def test_enable_kv_nz_uses_vllm_config_preconditions(self, mock_fix, mock_sparse):
         vc = VllmConfig()
-        vc.model_config = SimpleNamespace(is_deepseek_mla=True, architectures=[], enforce_eager=True)
+        vc.model_config = SimpleNamespace(
+            is_moe=False,
+            is_deepseek_mla=True,
+            architectures=[],
+            enforce_eager=True,
+        )
         vc.kv_transfer_config = SimpleNamespace(is_kv_consumer=True)
         vc.additional_config = {"enable_kv_nz": "true"}
 
