@@ -232,6 +232,7 @@ class TestAscendConfig(TestBase):
                 "fusion_ops_gmmswigluquant": False,
             },
             "multistream_overlap_shared_expert": True,
+            "enable_force_eplb": True,
             "eplb_config": {"num_redundant_experts": 2},
             "refresh": True,
             "enable_kv_nz": False,
@@ -242,6 +243,7 @@ class TestAscendConfig(TestBase):
         ascend_config = init_ascend_config(test_vllm_config)
         self.assertEqual(ascend_config.eplb_config.num_redundant_experts, 2)
         self.assertTrue(ascend_config.multistream_overlap_shared_expert)
+        self.assertTrue(ascend_config.enable_force_eplb)
         self.assertEqual(ascend_config.mega_moe_max_tokens, 32768)
 
         ascend_compilation_config = ascend_config.ascend_compilation_config

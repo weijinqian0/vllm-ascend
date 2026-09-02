@@ -149,6 +149,7 @@ from vllm_ascend.eplb.core.eplb_device_transfer_loader import D2DExpertWeightLoa
 from vllm_ascend.eplb.core.eplb_worker import EplbProcess
 from vllm_ascend.eplb.eplb_updator import EplbUpdator
 from vllm_ascend.model_executor.offloader import create_offloader
+from vllm_ascend.ops.fused_moe.force_eplb import build_force_eplb_topk
 from vllm_ascend.ops.rotary_embedding import set_cos_and_sin, update_cos_sin
 from vllm_ascend.ops.triton.spec_decode.ngram import triton_ngram_spec_decode
 from vllm_ascend.quantization.utils import enable_fa_quant
@@ -3604,7 +3605,7 @@ class NPUModelRunner(GPUModelRunner):
                     for_cudagraph_capture=is_graph_capturing,
                     num_scheduled_tokens_np=num_scheduled_tokens,
                 )
-        with self.maybe_dummy_run_with_lora(
+        with (self.maybe_dummy_run_with_lora(
             self.lora_config,
             num_scheduled_tokens,
             num_sampled_tokens,
@@ -3613,7 +3614,7 @@ class NPUModelRunner(GPUModelRunner):
             # to fix the accuracy issue of test_llama32_lora.py,
             # which is introduced by vllm-project/vllm#32005
             num_active_loras=(self.lora_config.max_loras if self.lora_config is not None else num_active_loras),
-        ):
+        )):
             # Make sure padding doesn't exceed max_num_tokens
             assert num_tokens_padded <= self.max_num_tokens
             if self.supports_mm_inputs and not self.model_config.is_encoder_decoder or self.enable_prompt_embeds:
@@ -3689,6 +3690,9 @@ class NPUModelRunner(GPUModelRunner):
                 has_sinks = self._has_sinks,
                 eplb_heat_collection_status=self.eplb_heat_collection_status if self.dynamic_eplb else False,
             ):
+                if not is_graph_capturing and self.ascend_config.enable_force_eplb \
+                    and self.vllm_config.model_config.is_moe:
+                    build_force_eplb_topk(self.device, self.max_num_tokens)
                 outputs = self._model_forward(
                     num_tokens_padded, input_ids, positions, intermediate_tensors, inputs_embeds
                 )
