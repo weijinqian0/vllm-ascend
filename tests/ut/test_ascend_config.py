@@ -22,7 +22,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
-from vllm.config import KVTransferConfig, VllmConfig as _VllmConfig
+from vllm.config import KVTransferConfig
+from vllm.config import VllmConfig as _VllmConfig
 
 from tests.ut.base import TestBase
 from vllm_ascend.ascend_config import (
@@ -47,6 +48,7 @@ from vllm_ascend.ascend_config import (
 from vllm_ascend.device.hardware import AscendDeviceType
 from vllm_ascend.device.hardware_profile import get_hardware_profile
 from vllm_ascend.utils import clear_enable_sp, enable_dsa_cp, enable_sp, shared_expert_dp_enabled
+
 
 def VllmConfig(*args: Any, **kwargs: Any) -> _VllmConfig:
     """Build a test config with the model metadata required by AscendConfig."""
