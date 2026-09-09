@@ -2088,7 +2088,7 @@ class KVPoolWorker:
             # Saves complete synchronously in wait_for_save(), so the scheduler
             # never waits for a request-level finished_sending notification.
             self.kv_send_thread.get_and_clear_finished_requests()
-            done_sending = set()
+            done_sending: set[str] = set()
         else:
             done_sending = set()
 
