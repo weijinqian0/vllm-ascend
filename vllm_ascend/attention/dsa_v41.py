@@ -88,6 +88,59 @@ def _config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
 
 
+def build_replay_swa_visible_lens(
+    window_size: int,
+    query_start_loc: torch.Tensor,
+    seq_lens: torch.Tensor,
+    replay_start: torch.Tensor,
+    num_tokens: int,
+) -> torch.Tensor:
+    """How many ori KV entries each query token may actually see.
+
+    Upstream's SWA kernels clamp the window per request (``start_pos =
+    max(start_pos, replay_start)``), and the clamp is a correctness requirement
+    rather than a refinement: a replayed request recomputes the hit's last
+    window, so the sliding-window group holds no KV of its own below
+    ``replay_start``. Those blocks were retired and replaced by the null block,
+    whose KV upstream documents as all-zero -- the window would not read another
+    request's data, it would read phantom keys that score zero and take weight
+    in the replayed token's softmax.
+
+    This operator bounds a window with one scalar for the whole call
+    (``ori_win_left``), which cannot express a per-token floor, so the floor
+    travels through ``ori_topk_length`` in band mode: "the number of ori KV
+    entries this query token may see". Entries are counted back from the token's
+    own right edge, so a count of ``position - floor + 1`` is exactly "keep the
+    window ending here, but not past the floor".
+
+    Positions are derived the way the operator derives its own, from
+    ``seqused_ori_kv - actS1Size + s1``, so the two coordinate systems cannot
+    drift. Device-side only: no ``.item()``, no host round trip. The caller
+    guarantees ``num_tokens`` is the sum of the query lengths, as
+    :func:`build_dspark_swa_indices` does for the other user of this channel.
+    """
+    query_lens = query_start_loc[1:] - query_start_loc[:-1]
+    req_ids = torch.repeat_interleave(
+        torch.arange(query_lens.shape[0], device=query_start_loc.device, dtype=torch.long),
+        query_lens,
+        output_size=num_tokens,
+    )
+    token_offsets = torch.arange(num_tokens, device=query_start_loc.device) - query_start_loc[req_ids]
+    positions = seq_lens[req_ids] - query_lens[req_ids] + token_offsets
+    lower = replay_start[: query_lens.shape[0]].to(positions.dtype)[req_ids]
+    start_positions = torch.maximum(positions - int(window_size) + 1, lower).clamp_min(0)
+    return (positions - start_positions + 1).to(torch.int32).unsqueeze(1)
+
+
+def build_decoder_replay_swa_indices(positions, window_size, query_start_loc, seq_lens, replay_start):
+    """Publish only keys written by the retained decoder query rows."""
+    lengths = build_replay_swa_visible_lens(window_size, query_start_loc, seq_lens, replay_start, positions.shape[0])
+    columns = torch.arange(window_size, device=positions.device)
+    starts = positions[:, None] + 1 - lengths
+    indices = torch.where(columns < lengths, starts + columns, -1).to(torch.int32).unsqueeze(1)
+    return indices, lengths
+
+
 @dataclass
 class AscendDSAV41Metadata(AttentionMetadata):
     """Scheduler and cache-plane contract for one V4.1 cache resource.
@@ -1101,6 +1154,16 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
                     num_reqs * blocks_per_req, dtype=torch.int32, device=seq_lens.device
                 ).view(num_reqs, blocks_per_req)
         noncausal = not bool(getattr(common, "causal", True))
+        if replay_start is not None and self._uses_a5_packed_cache and cache_kind == "swa":
+            # Packed attention uses explicit logical indices. Decoder replay
+            # writes no SWA KV below this floor, so do not publish those keys.
+            ori_sparse_indices, ori_topk_length = build_decoder_replay_swa_indices(
+                positions[:num_actual_tokens],
+                window_size,
+                common.query_start_loc[: num_reqs + 1],
+                seq_lens,
+                replay_start,
+            )
         if noncausal and ori_sparse_indices is None:
             ori_sparse_indices, ori_topk_length = build_dspark_swa_indices(
                 common.block_table_tensor[:num_reqs],

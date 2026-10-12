@@ -9,9 +9,10 @@ import torch
 from vllm.config import CUDAGraphMode, VllmConfig
 from vllm.distributed import get_tp_group, tensor_model_parallel_all_gather
 from vllm.logger import logger
-from vllm.models.deepseek_v41.decoder_replay_layers import DecoderReplayLayers
 
 from vllm_ascend.utils import enable_dsa_cp
+
+from .decoder_replay_compat import DecoderReplayLayers
 
 if TYPE_CHECKING:
     from .model import DeepseekV41Model
@@ -121,7 +122,12 @@ def make_decoder_replay(model: "DeepseekV41Model", config: VllmConfig) -> Ascend
         replay = AscendDecoderReplayLayers(
             model.config.sliding_window,
             model._run_replay_layers,
-            [model.topk_indices_buffer, model.candidate_indices_buffer],
+            [
+                model.topk_indices_buffer,
+                model.candidate_indices_buffer,
+                model.candidate_lengths_buffer,
+                model.topk_lengths_buffer,
+            ],
         )
         replay.sequence_parallel = model.use_sequence_parallel
         return replay
