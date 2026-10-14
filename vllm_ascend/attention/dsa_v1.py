@@ -1852,7 +1852,8 @@ class AscendDSAImpl(AttentionImplBase[Any]):
         else:
             o_proj_input = self._wo_a_bmm(o_proj_input)
             o_proj_input = o_proj_input.reshape(num_tokens, -1)
-            method = getattr(self.wo_b.quant_method, "quant_method", self.wo_b.quant_method)
+            quant_method = getattr(self.wo_b, "quant_method", None)
+            method = getattr(quant_method, "quant_method", quant_method)
             if _has_npu_quant_matmul_out() and isinstance(method, AscendW8A8MXFP8DynamicLinearMethod):
                 quant_o, o_scale = torch_npu.npu_dynamic_mx_quant(
                     o_proj_input,
