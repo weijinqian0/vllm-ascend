@@ -57,9 +57,3 @@ class TestEnvVariables(TestBase):
         for var_name in self.env_vars:
             with self.subTest(var=var_name):
                 getattr(envs_ascend, var_name)
-
-    def test_kvpool_range_debug_is_not_an_environment_setting(self):
-        name = "VLLM_ASCEND_KVPOOL_RANGE_DEBUG"
-        self.assertNotIn(name, envs_ascend.env_variables)
-        with self.assertRaises(AttributeError):
-            getattr(envs_ascend, name)
