@@ -62,7 +62,7 @@ The following table lists additional configuration options available in vLLM Asc
 | `dump_config`                       | dict | `None`  | Inline msprobe dump configuration. vLLM-Ascend will materialize it to a temporary JSON file and pass that file to the debugger. |
 | `dump_config_path`                  | str  | `None`  | Configuration file path for msprobe dump (compatible legacy option).                                      |
 | `enable_shared_expert_dp`           | bool | `False` | Replicate shared-expert weights across TP ranks and run the shared expert with data parallelism. This option is independent of upstream MoE sequence parallelism; either feature or both can be enabled. It improves performance but consumes more memory. |
-| `enable_force_eplb`                 | bool | `False` | Force a deterministic round-robin expert routing to measure the EPLB performance ceiling. **Analysis and profiling only — never enable in production.** It replaces the real MoE router output, so model results and accuracy are invalid. Cannot be combined with `eplb_config.dynamic_eplb`. See <a href="#enable_force_eplb">enable_force_eplb</a>. |
+| `enable_force_eplb`                 | bool | `False` | Force a deterministic round-robin expert routing to measure the EPLB performance ceiling. **Analysis and profiling only — never enable in production.** It replaces the real MoE router output, so model results and accuracy are invalid. Cannot be combined with `eplb_config.dynamic_eplb`. |
 | `multistream_overlap_shared_expert` | bool | `False` | Whether to enable multi-stream shared expert. This option only takes effect on MoE models with shared experts. |
 | `enable_cpu_binding`                | bool | `True`  | Enables Ascend-native CPU binding on ARM servers. Set to `False` to disable. See [CPU Binding](../feature_guide/cpu_binding.md). |
 | `pa_shape_list`                     | list | `[]`    | The custom shape list of page attention ops.                                                              |
@@ -183,33 +183,6 @@ configuration.
 | `eplb_policy_type`               | int | `2`    | MRv1 only. EPLB policy: `0`=Random, `1`=DefaultEplb, `2`=SwiftBalanceEplb, `3`=FlashLB. |
 | `eplb_heat_collection_stage`     | str | `"all"`| MRv1 only. Select `"all"`, `"prefill"`, or `"decode"` heat collection. |
 | `load_collection_phase`          | str | `"all"`| MRv2 only. Select `"all"`, `"prefill"`, or `"decode"` load submission. Any batch containing a prefill request is classified entirely as prefill. |
-
-<span id="enable_force_eplb"></span>**enable_force_eplb**
-
-`enable_force_eplb` overrides the MoE router output with a precomputed round-robin
-expert assignment, giving every expert-parallel rank a synthetic, perfectly balanced
-token distribution. It is used to measure the performance upper bound (ceiling) of the
-expert-parallel / EPLB path under an ideal, evenly distributed load.
-
-!!!WARNING
-
-    `enable_force_eplb` is an **analysis-only** switch. Because it replaces the real
-    routing result, the model output no longer reflects the actual computation and
-    **accuracy is invalid**. Do not enable it in production, and do not use it for any
-    correctness or accuracy validation. Use it only to analyze the performance ceiling
-    of the EPLB path in isolation.
-
-- Enable it through `additional_config` while expert parallelism is on: `--additional-config '{"enable_force_eplb": true}'`.
-- It takes effect only on MoE models, and `num_logical_experts` must be divisible by the expert-parallel size; otherwise startup fails.
-- It cannot be combined with `eplb_config.dynamic_eplb`. Setting both raises a startup configuration error.
-- The synthetic routing table is prebuilt before ACLGraph capture and reused across steps, so it is compatible with graph mode.
-
-```bash
-vllm serve Qwen/Qwen3-235B-A22B \
-  --tensor-parallel-size 16 \
-  --enable-expert-parallel \
-  --additional-config '{"enable_force_eplb": true}'
-```
 
 **scheduler_config**
 
