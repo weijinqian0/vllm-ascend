@@ -36,7 +36,10 @@ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.backend.mooncake_l
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.backend.session_tracker import (
     LayerwiseSessionTracker,
 )
-from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.dspark_prefix_cache import DSparkPrefixKeys
+from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.dspark_prefix_cache import (
+    DSparkPrefixCache,
+    DSparkPrefixKeys,
+)
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.kv_transfer import (
     KVTransferThread,
 )
@@ -135,7 +138,7 @@ class LayerwiseKVPoolWorker(KVPoolWorker):
                 use_hybrid=self.use_hybrid,
                 grouped_block_size=self.grouped_block_size,
             )
-            if self.layerwise_data_plane is not None
+            if self.layerwise_backend is not None and self.layerwise_data_plane is not None
             else None
         )
         self.layerwise_max_transfer_blocks = int(extra_config.get("layerwise_max_transfer_blocks", 0))
@@ -585,6 +588,26 @@ class LayerwiseKVPoolWorker(KVPoolWorker):
         ready_event.wait()
         self._transfer_threads_started = True
 
+    def _register_dspark_prefix_cache(self, draft_caches: dict[str, torch.Tensor]) -> None:
+        prefix_keys: DSparkPrefixKeys | None = getattr(self, "_dspark_prefix_keys", None)
+        if prefix_keys is not None and self.pp_rank == self.pp_size - 1:
+            self.dspark_prefix_cache = DSparkPrefixCache(
+                prefix_keys,
+                self.m_store,
+                self.tp_rank,
+                self.block_size,
+                self.hash_block_size,
+                self._copy_dspark_prefix,
+            )
+            assert self.kv_cache_config is not None
+            layer_group_ids = {
+                name: group_id
+                for group_id, group in enumerate(self.kv_cache_config.kv_cache_groups)
+                for name in group.layer_names
+                if name in self._dspark_draft_layer_names
+            }
+            self.dspark_prefix_cache.register(draft_caches, layer_group_ids, self.original_block_size, self.num_blocks)
+
     def _copy_dspark_prefix(self, gvas: Any, addrs: Any, sizes: Any, direction: int) -> int:
         assert isinstance(self.kv_recv_thread, KVTransferThread)
         return self.kv_recv_thread._batch_copy_with_limits(
@@ -734,6 +757,7 @@ class LayerwiseKVPoolWorker(KVPoolWorker):
         block_index: int,
         end_token: int,
     ) -> str:
+        assert self.layerwise_backend is not None
         return self.layerwise_backend.make_partial_key(
             self.model_name,
             request.req_id,
@@ -2171,6 +2195,7 @@ class LayerwiseKVPoolWorker(KVPoolWorker):
         for teardown. Step completion passes ``drain_recv=False`` to wait only
         for outstanding PUTs.
         """
+        assert self.layerwise_backend is not None
         if full and drain_recv is None:
             drain_recv = True
         elif drain_recv is None:

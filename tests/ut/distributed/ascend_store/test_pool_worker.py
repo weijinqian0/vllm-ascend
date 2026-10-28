@@ -45,11 +45,47 @@ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.metadata
     SharedBlockData,
     get_partial_block_index,
 )
+from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.pool_worker import LayerwiseKVPoolWorker
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.metadata import (
     AscendConnectorMetadata,
     LoadSpec,
     ReqMeta,
 )
+
+
+class TestDSparkPrefixRegistration(unittest.TestCase):
+    def test_only_final_pipeline_stage_registers_draft_cache(self):
+        for pp_rank in (0, 1):
+            with self.subTest(pp_rank=pp_rank):
+                worker = LayerwiseKVPoolWorker.__new__(LayerwiseKVPoolWorker)
+                worker._dspark_prefix_keys = MagicMock()
+                worker._dspark_draft_layer_names = {"draft"}
+                worker.pp_rank, worker.pp_size = pp_rank, 2
+                worker.tp_rank = 0
+                worker.block_size = worker.hash_block_size = 16
+                worker.num_blocks = 4
+                worker.original_block_size = [16]
+                worker.m_store = MagicMock()
+                worker.kv_cache_config = SimpleNamespace(
+                    kv_cache_groups=[SimpleNamespace(layer_names=["target", "draft"])]
+                )
+                draft_caches = {"draft": MagicMock()}
+                with patch(
+                    "vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.pool_worker.DSparkPrefixCache"
+                ) as prefix_cache:
+                    worker._register_dspark_prefix_cache(draft_caches)
+                    if pp_rank == 0:
+                        prefix_cache.assert_not_called()
+                    else:
+                        prefix_cache.assert_called_once_with(
+                            worker._dspark_prefix_keys,
+                            worker.m_store,
+                            worker.tp_rank,
+                            worker.block_size,
+                            worker.hash_block_size,
+                            worker._copy_dspark_prefix,
+                        )
+                        prefix_cache.return_value.register.assert_called_once_with(draft_caches, {"draft": 0}, [16], 4)
 
 
 def start_patch(test: unittest.TestCase, *args, **kwargs):

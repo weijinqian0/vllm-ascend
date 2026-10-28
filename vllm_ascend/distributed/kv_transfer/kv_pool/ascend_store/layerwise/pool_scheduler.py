@@ -67,7 +67,7 @@ class LayerwiseKVPoolScheduler(KVPoolScheduler):
                 use_hybrid=self.use_hybrid,
                 grouped_block_size=self.grouped_block_size,
             )
-            if self.layerwise_data_plane is not None
+            if self.layerwise_backend is not None and self.layerwise_data_plane is not None
             else None
         )
         if self.use_block_key_layerwise and self.tp_mismatch:

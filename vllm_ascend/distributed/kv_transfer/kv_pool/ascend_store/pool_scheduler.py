@@ -197,6 +197,12 @@ class KVPoolScheduler:
 
         self.client: LookupKeyClient | None = None
 
+    def _init_layerwise_runtime(self, vllm_config: VllmConfig, kv_cache_config: KVCacheConfig | None) -> None:
+        """Initialize optional layerwise state in the layerwise scheduler."""
+
+    def _init_layerwise_offload(self, vllm_config: VllmConfig, kv_cache_config: KVCacheConfig | None) -> None:
+        """Initialize optional offload state after common scheduler metadata."""
+
     def _use_hybrid(self, vllm_config: VllmConfig, kv_cache_groups: list[Any] | None) -> bool:
         return uses_hybrid_kv_cache(vllm_config.scheduler_config, kv_cache_groups)
 

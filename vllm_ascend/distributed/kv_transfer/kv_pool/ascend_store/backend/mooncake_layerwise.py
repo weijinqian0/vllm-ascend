@@ -21,7 +21,7 @@ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.metadata import (
 )
 
 if TYPE_CHECKING:
-    from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.pool_worker import KVPoolWorker
+    from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.pool_worker import LayerwiseKVPoolWorker
 
 
 def make_block_key(
@@ -179,7 +179,7 @@ def selected(mask, index: int) -> bool:
     return mask is None or (0 <= index < len(mask) and bool(mask[index]))
 
 
-def prepare_group_sessions(worker: KVPoolWorker, requests: list[ReqMeta]) -> dict[int, list[ReqMeta]]:
+def prepare_group_sessions(worker: LayerwiseKVPoolWorker, requests: list[ReqMeta]) -> dict[int, list[ReqMeta]]:
     worker._layer_load_aborted.clear()
     with worker._put_started_keys_lock:
         previously_started = worker._put_started_keys.copy()
@@ -196,7 +196,7 @@ def prepare_group_sessions(worker: KVPoolWorker, requests: list[ReqMeta]) -> dic
         raise
 
 
-def _prepare_group_sessions(worker: KVPoolWorker, requests: list[ReqMeta]) -> dict[int, list[ReqMeta]]:
+def _prepare_group_sessions(worker: LayerwiseKVPoolWorker, requests: list[ReqMeta]) -> dict[int, list[ReqMeta]]:
     """Views isolate per-group key slots while preserving real request ownership.
 
     Hybrid pooling publishes only complete blocks. Partial compressor/SWA state

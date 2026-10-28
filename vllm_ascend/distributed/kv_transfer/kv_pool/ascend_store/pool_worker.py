@@ -718,6 +718,9 @@ class KVPoolWorker:
             assert new_start >= storage_key, "invalid kv cache tensor, raw tensor ptr must be align to 2MB"
             registered_regions[storage_key] = (new_start, end)
 
+    def _register_dspark_prefix_cache(self, draft_caches: dict[str, torch.Tensor]) -> None:
+        """Register draft caches when the layerwise worker enables prefix reuse."""
+
     def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]):
         draft_names = getattr(self, "_dspark_draft_layer_names", ())
         draft_caches = {name: cache for name, cache in kv_caches.items() if name in draft_names}
@@ -730,24 +733,7 @@ class KVPoolWorker:
         self.num_blocks = (
             self.kv_cache_config.num_blocks if self.kv_cache_config is not None else first_kv_cache.shape[0]
         )
-        prefix_keys: DSparkPrefixKeys | None = getattr(self, "_dspark_prefix_keys", None)
-        if prefix_keys is not None and self.pp_rank == self.pp_size - 1:
-            self.dspark_prefix_cache = DSparkPrefixCache(
-                prefix_keys,
-                self.m_store,
-                self.tp_rank,
-                self.block_size,
-                self.hash_block_size,
-                self._copy_dspark_prefix,
-            )
-            assert self.kv_cache_config is not None
-            layer_group_ids = {
-                name: group_id
-                for group_id, group in enumerate(self.kv_cache_config.kv_cache_groups)
-                for name in group.layer_names
-                if name in draft_names
-            }
-            self.dspark_prefix_cache.register(draft_caches, layer_group_ids, self.original_block_size, self.num_blocks)
+        self._register_dspark_prefix_cache(draft_caches)
         logger.info("num_blocks: %s", self.num_blocks)
         self.block_len = []
         self.block_stride = []
@@ -865,7 +851,6 @@ class KVPoolWorker:
 
     def start_load_kv(self, metadata: AscendConnectorMetadata):
         self.current_layer = 0
-        self.layerwise_retrievers = []
         logger.debug("KV pool worker start_load_kv requests=%d", len(metadata.requests))
         if len(metadata.requests) == 0:
             return

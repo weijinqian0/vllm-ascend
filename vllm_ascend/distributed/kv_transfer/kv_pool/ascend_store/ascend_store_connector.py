@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 from vllm.config import VllmConfig
@@ -203,11 +203,11 @@ class AscendStoreConnector(KVConnectorBase_V1, SupportsHMA):
             return False
         self.dspark_prefix_cache_enabled = True
         if self.connector_scheduler is not None:
-            self.connector_scheduler.dspark_prefix_keys = keys
+            cast(LayerwiseKVPoolScheduler, self.connector_scheduler).dspark_prefix_keys = keys
             # Retain a final prompt block for safe target/auxiliary recompute.
             self.connector_scheduler.use_eagle = True
         if self.connector_worker is not None:
-            self.connector_worker.configure_dspark_prefix_cache(keys)
+            cast(LayerwiseKVPoolWorker, self.connector_worker).configure_dspark_prefix_cache(keys)
         return True
 
     def restore_dspark_prefix(self, metadata: Any, request_id: str, offset: int, block_ids: Any) -> int:
@@ -363,7 +363,7 @@ class AscendStoreConnector(KVConnectorBase_V1, SupportsHMA):
             # Target hooks have advanced current_layer by then, so preparing
             # the step there would reset the current layer before MTP.
             self._mamba_copy_bufs = None
-            self.connector_worker.prepare_layerwise_step(connector_metadata)
+            cast(LayerwiseKVPoolWorker, self.connector_worker).prepare_layerwise_step(connector_metadata)
 
     def start_load_kv(self, forward_context: "ForwardContext", **kwargs) -> None:
         assert self.connector_worker is not None
@@ -391,13 +391,13 @@ class AscendStoreConnector(KVConnectorBase_V1, SupportsHMA):
         if not self.use_layerwise:
             return
         assert self.connector_worker is not None
-        self.connector_worker.wait_for_layer_load_ready(layer_name)
+        cast(LayerwiseKVPoolWorker, self.connector_worker).wait_for_layer_load_ready(layer_name)
 
     def wait_for_layer_load(self, layer_name: str) -> None:
         if not self.use_layerwise:
             return
         assert self.connector_worker is not None
-        self.connector_worker.wait_for_layer_load()
+        cast(LayerwiseKVPoolWorker, self.connector_worker).wait_for_layer_load()
         if self._mamba_copy_bufs is not None:
             mamba_utils.do_mamba_copy_block_for_layer(
                 self._mamba_copy_bufs,
@@ -447,7 +447,7 @@ class AscendStoreConnector(KVConnectorBase_V1, SupportsHMA):
             # A load-only consumer does not publish KV.
             return
         assert self.connector_worker is not None
-        self.connector_worker.save_kv_layer(self._get_connector_metadata())
+        cast(LayerwiseKVPoolWorker, self.connector_worker).save_kv_layer(self._get_connector_metadata())
 
     def wait_for_save(self):
         if not self.can_put:
