@@ -19,6 +19,7 @@ from vllm.v1.kv_cache_interface import MambaSpec, UniformTypeKVCacheSpecs
 from tests.ut.distributed.ascend_store.test_pool_worker import make_worker, start_patch
 from tests.ut.models.test_glm5next_cache_config import make_config, make_specs
 from vllm_ascend.core.kv_cache_interface import AscendIndexerKPoolTailSpec
+from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.ascend_store_connector import create_kv_pool_scheduler
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.metadata import (
     AscendConnectorMetadata,
     LoadSpec,
@@ -324,7 +325,7 @@ class TestGLM53Store(unittest.TestCase):
         # make_worker pins to retention 0 (semantic checkpoints only); this
         # round-trip persists every block, so look it up densely.
         workers[0][0].vllm_config.cache_config.prefix_cache_retention_interval = None
-        scheduler = KVPoolScheduler(workers[0][0].vllm_config, True, workers[0][0].kv_cache_config)
+        scheduler = create_kv_pool_scheduler(workers[0][0].vllm_config, True, workers[0][0].kv_cache_config)
         scheduler.store_scheduler.batch_is_readable.side_effect = lambda keys: [key in readable for key in keys]
         hit_request = SimpleNamespace(
             request_id="hit", prompt_token_ids=[1] * 513, num_tokens=513, block_hashes=[block_hash]
@@ -348,7 +349,7 @@ class TestGLM53Store(unittest.TestCase):
         plan = make_glm53_plan()
         worker = make_worker(self, kv_cache_config=plan, use_layerwise=True, use_mla=True, num_layers=4)
         start_patch(self, "vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.pool_scheduler.importlib")
-        scheduler = KVPoolScheduler(worker.vllm_config, True, plan)
+        scheduler = create_kv_pool_scheduler(worker.vllm_config, True, plan)
         self.assertTrue(worker.use_block_key_layerwise)
         self.assertTrue(scheduler.use_block_key_layerwise)
         self.assertEqual(worker.cacheable_group_ids, [0, 2, 3, 4])

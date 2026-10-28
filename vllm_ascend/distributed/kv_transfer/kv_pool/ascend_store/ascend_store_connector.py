@@ -33,11 +33,15 @@ from vllm.v1.request import Request
 from vllm.v1.worker import mamba_utils
 
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.backend import (
-    get_layerwise_data_plane,
-    get_layerwise_protocol,
-    validate_layerwise_topology,
+    get_backend_class,
 )
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.dspark_prefix_cache import DSparkPrefixKeys
+from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.pool_scheduler import (
+    LayerwiseKVPoolScheduler,
+)
+from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.pool_worker import (
+    LayerwiseKVPoolWorker,
+)
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.lookup_key import LookupKeyServer
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.metadata import (
     AscendStoreKVConnectorWorkerMetadata,
@@ -53,6 +57,28 @@ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.pool_worker import
 
 if TYPE_CHECKING:
     from vllm.distributed.kv_transfer.kv_connector.v1.base import KVConnectorHandshakeMetadata
+
+
+def create_kv_pool_scheduler(
+    vllm_config: VllmConfig, use_layerwise: bool, kv_cache_config: KVCacheConfig | None = None
+) -> KVPoolScheduler:
+    scheduler_class = LayerwiseKVPoolScheduler if use_layerwise else KVPoolScheduler
+    return scheduler_class(vllm_config, use_layerwise, kv_cache_config)
+
+
+def create_kv_pool_worker(
+    vllm_config: VllmConfig,
+    use_layerwise: bool,
+    kv_cache_config: KVCacheConfig | None = None,
+    memcache_dp_init_barrier: bool = True,
+) -> KVPoolWorker:
+    worker_class = LayerwiseKVPoolWorker if use_layerwise else KVPoolWorker
+    return worker_class(
+        vllm_config,
+        use_layerwise,
+        kv_cache_config,
+        memcache_dp_init_barrier=memcache_dp_init_barrier,
+    )
 
 
 class AscendStoreKVEvents(KVConnectorKVEvents):
@@ -107,10 +133,9 @@ class AscendStoreConnector(KVConnectorBase_V1, SupportsHMA):
         self.consumer_is_to_put = extra_config.get("consumer_is_to_put", False)
         self.memcache_dp_init_barrier = extra_config.get("memcache_dp_init_barrier", True)
         self.backend_name = extra_config.get("backend", "mooncake").lower()
-        self.layerwise_protocol = get_layerwise_protocol(self.backend_name)
-        self.layerwise_data_plane = get_layerwise_data_plane(self.layerwise_protocol)
+        self.backend_class = get_backend_class(self.backend_name) if self.use_layerwise else None
+        self.layerwise_data_plane = self.backend_class.layerwise_data_plane if self.backend_class is not None else None
         self.use_block_key_layerwise = self.use_layerwise and self.layerwise_data_plane == "block_key"
-        validate_layerwise_topology(self.layerwise_protocol, vllm_config.parallel_config, self.use_layerwise)
         self.save_decode_cache = vllm_config.kv_transfer_config.kv_connector_extra_config.get(
             "save_decode_cache", False
         )
@@ -152,9 +177,9 @@ class AscendStoreConnector(KVConnectorBase_V1, SupportsHMA):
 
         if role == KVConnectorRole.SCHEDULER:
             assert kv_cache_config is not None
-            self.connector_scheduler = KVPoolScheduler(vllm_config, self.use_layerwise, kv_cache_config)
+            self.connector_scheduler = create_kv_pool_scheduler(vllm_config, self.use_layerwise, kv_cache_config)
         else:
-            self.connector_worker = KVPoolWorker(
+            self.connector_worker = create_kv_pool_worker(
                 vllm_config,
                 self.use_layerwise,
                 kv_cache_config,
@@ -441,7 +466,7 @@ class AscendStoreConnector(KVConnectorBase_V1, SupportsHMA):
         metadata = self._get_connector_metadata()
         if self._current_step_has_real_forward:
             try:
-                self.connector_worker.ensure_store_initialized()
+                self.connector_worker.m_store.ensure_initialized()
             finally:
                 self._current_step_has_real_forward = False
         done_sending, done_recving = self.connector_worker.get_finished(finished_req_ids, metadata)
