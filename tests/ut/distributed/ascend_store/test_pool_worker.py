@@ -235,8 +235,8 @@ class TestPCPPoolWorker(unittest.TestCase):
                     kv_cache_config=config,
                 )
                 self.assertEqual(worker.cacheable_group_ids, [0])
-                self.assertEqual(worker.layerwise_offload, reuse)
-                self.assertEqual(worker.prefetch_layer_map, {2: 1, 3: 2} if reuse else {})
+                self.assertEqual(getattr(worker, "layerwise_offload", False), reuse)
+                self.assertEqual(getattr(worker, "prefetch_layer_map", {}), {2: 1, 3: 2} if reuse else {})
                 if reuse:
                     self.assertEqual(set(worker._layerwise_reuse_layout.layer_cache_specs), set(range(4)))
                     self.assertTrue(
@@ -763,7 +763,7 @@ class TestKVPoolWorkerHelpers(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_wait_for_layer_load_fallback_waits_for_reuse(self):
-        cls = self._make_worker_class()
+        cls = LayerwiseKVPoolWorker
         worker = cls.__new__(cls)
         worker.use_kvpp = False
         worker.current_layer = 0
@@ -914,7 +914,7 @@ class TestKVPoolWorkerHelpers(unittest.TestCase):
         import torch
         from vllm.v1.kv_cache_interface import FullAttentionSpec
 
-        cls = self._make_worker_class()
+        cls = LayerwiseKVPoolWorker
         worker = object.__new__(cls)
         worker.num_layers = 4
         worker.num_kv_cache_groups = 2
@@ -1708,7 +1708,7 @@ class TestKVPoolWorkerProcessLayerData(unittest.TestCase):
     """Test process_layer_data and related layerwise methods."""
 
     def _make_worker(self):
-        return make_worker(self)
+        return make_worker(self, use_layerwise=True, extra_config={"backend": "memcache"})
 
     def _make_gva_worker(self, num_groups=1):
         worker = make_worker(self, extra_config={"backend": "memcache"}, use_layerwise=True)

@@ -20,13 +20,13 @@ from tests.ut.distributed.ascend_store.test_pool_worker import make_worker, star
 from tests.ut.models.test_glm5next_cache_config import make_config, make_specs
 from vllm_ascend.core.kv_cache_interface import AscendIndexerKPoolTailSpec
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.ascend_store_connector import create_kv_pool_scheduler
+from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.pool_worker import LayerwiseKVPoolWorker
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.metadata import (
     AscendConnectorMetadata,
     LoadSpec,
     ReqMeta,
 )
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.pool_scheduler import KVPoolScheduler
-from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.pool_worker import KVPoolWorker
 from vllm_ascend.models.glm5next.cache_config import (
     get_glm5_next_kv_cache_config,
     get_glm5_next_kv_cache_groups,
@@ -378,12 +378,12 @@ class TestGLM53Store(unittest.TestCase):
             prefetch_layer_map={},
             kv_send_thread=SimpleNamespace(request_queue=pending, raise_if_failed=MagicMock()),
         )
-        worker._wait_for_final_layer_save = MethodType(KVPoolWorker._wait_for_final_layer_save, worker)
+        worker._wait_for_final_layer_save = MethodType(LayerwiseKVPoolWorker._wait_for_final_layer_save, worker)
         worker.sync_save_events[1].record.side_effect = entered.set
 
         def save():
             try:
-                KVPoolWorker.save_kv_layer(worker, AscendConnectorMetadata(set()))
+                LayerwiseKVPoolWorker.save_kv_layer(worker, AscendConnectorMetadata(set()))
             except Exception as error:
                 errors.append(error)
             finally:
@@ -421,9 +421,9 @@ class TestGLM53Store(unittest.TestCase):
                 raise_if_failed=MagicMock(side_effect=[None, RuntimeError("save failed")]),
             ),
         )
-        worker._wait_for_final_layer_save = MethodType(KVPoolWorker._wait_for_final_layer_save, worker)
+        worker._wait_for_final_layer_save = MethodType(LayerwiseKVPoolWorker._wait_for_final_layer_save, worker)
         with self.assertRaisesRegex(RuntimeError, "save failed"):
-            KVPoolWorker.save_kv_layer(worker, AscendConnectorMetadata(set()))
+            LayerwiseKVPoolWorker.save_kv_layer(worker, AscendConnectorMetadata(set()))
 
     def test_layerwise_null_kda_slots_never_publish_readable_keys(self):
         plan = make_glm53_plan()
